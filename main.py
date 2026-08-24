@@ -3,9 +3,16 @@ import json
 import logging
 import asyncio
 import base64
+import threading
+
 import httpx
+import uvicorn
+
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
 
 from openai import OpenAI
+
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -19,9 +26,12 @@ from telegram.ext import (
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+ATLAS_API_KEY = os.environ["ATLAS_API_KEY"]
 
 REPO = "agwuh1234-bot/AtlasCore"
 MODEL = "gpt-5.4-mini"
+
+PORT = int(os.environ.get("PORT", "8080"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,8 +56,8 @@ SYSTEM_PROMPT = """
 - полностью обновлять существующие файлы;
 - делать GitHub commit.
 
-Если пользователь просит проверить код или репозиторий,
-обязательно используй GitHub-инструменты.
+Если пользователь спрашивает о репозитории или коде,
+используй GitHub-инструменты.
 
 Если пользователь просит создать или изменить файл,
 используй github_write_file.
@@ -55,8 +65,7 @@ SYSTEM_PROMPT = """
 Никогда не говори, что действие выполнено,
 если инструмент вернул ошибку.
 
-При изменении main.py сначала прочитай текущий файл
-и не удаляй рабочие функции без необходимости.
+При изменении main.py сначала прочитай текущий файл.
 
 Отвечай на языке пользователя.
 """
@@ -106,15 +115,12 @@ TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Путь к файлу",
                 },
                 "content": {
                     "type": "string",
-                    "description": "Полное новое содержимое файла",
                 },
                 "commit_message": {
                     "type": "string",
-                    "description": "Сообщение commit",
                 },
             },
             "required": [
@@ -200,7 +206,6 @@ async def github_read_file(path):
                 "ok": False,
                 "status": response.status_code,
                 "path": path,
-                "error": response.text[:500],
             },
             ensure_ascii=False,
         )
@@ -212,7 +217,6 @@ async def github_read_file(path):
             {
                 "ok": False,
                 "error": "not_a_file",
-                "path": path,
             },
             ensure_ascii=False,
         )
@@ -265,16 +269,6 @@ async def github_write_file(
 
         if current.status_code == 200:
             current_data = current.json()
-
-            if current_data.get("type") != "file":
-                return json.dumps(
-                    {
-                        "ok": False,
-                        "error": "path_is_not_file",
-                    },
-                    ensure_ascii=False,
-                )
-
             payload["sha"] = current_data["sha"]
 
         elif current.status_code != 404:
@@ -283,7 +277,6 @@ async def github_write_file(
                     "ok": False,
                     "status": current.status_code,
                     "step": "read_existing",
-                    "error": current.text[:500],
                 },
                 ensure_ascii=False,
             )
@@ -311,12 +304,14 @@ async def github_write_file(
         {
             "ok": True,
             "path": path,
-            "commit_sha": (
-                data.get("commit", {}).get("sha")
-            ),
-            "file_url": (
-                data.get("content", {}).get("html_url")
-            ),
+            "commit_sha": data.get(
+                "commit",
+                {},
+            ).get("sha"),
+            "file_url": data.get(
+                "content",
+                {},
+            ).get("html_url"),
         },
         ensure_ascii=False,
     )
@@ -347,7 +342,6 @@ async def execute_tool(
         {
             "ok": False,
             "error": "unknown_tool",
-            "tool": name,
         },
         ensure_ascii=False,
     )
@@ -442,17 +436,85 @@ async def run_atlas(
     return response
 
 
+api = FastAPI(
+    title="Atlas API",
+    version="1.0",
+)
+
+
+class TaskRequest(BaseModel):
+    task: str
+    previous_response_id: str | None = None
+
+
+def verify_api_key(
+    authorization: str | None,
+):
+    expected = f"Bearer {ATLAS_API_KEY}"
+
+    if authorization != expected:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized",
+        )
+
+
+@api.get("/health")
+async def api_health():
+    return {
+        "ok": True,
+        "service": "AtlasCore",
+        "telegram": True,
+        "openai": True,
+        "github": True,
+    }
+
+
+@api.post("/task")
+async def api_task(
+    body: TaskRequest,
+    authorization: str | None = Header(
+        default=None
+    ),
+):
+    verify_api_key(
+        authorization
+    )
+
+    try:
+        response = await run_atlas(
+            body.task,
+            body.previous_response_id,
+        )
+
+        return {
+            "ok": True,
+            "response_id": response.id,
+            "answer": response.output_text,
+        }
+
+    except Exception as exc:
+        logger.exception(
+            "API task failed"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
 async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
     await update.message.reply_text(
         "ATLAS ONLINE ✅\n\n"
+        "Telegram: ✅\n"
+        "API: ✅\n"
         "OpenAI: ✅\n"
         "GitHub READ: ✅\n"
-        "GitHub WRITE: ✅\n"
-        "Railway: ✅\n\n"
-        "Atlas готов к работе."
+        "GitHub WRITE: ✅"
     )
 
 
@@ -469,6 +531,7 @@ async def status(
         "ATLAS STATUS ✅\n\n"
         "Telegram: ✅ online\n"
         f"Railway: {railway}\n"
+        "API: ✅\n"
         "OpenAI: ✅\n"
         "GitHub READ: ✅\n"
         "GitHub WRITE: ✅\n"
@@ -481,41 +544,31 @@ async def repo(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    try:
-        url = f"https://api.github.com/repos/{REPO}"
+    url = f"https://api.github.com/repos/{REPO}"
 
-        async with httpx.AsyncClient(
-            timeout=20
-        ) as client:
-            response = await client.get(
-                url,
-                headers=github_headers(),
-            )
+    async with httpx.AsyncClient(
+        timeout=20
+    ) as client:
+        response = await client.get(
+            url,
+            headers=github_headers(),
+        )
 
-        if response.status_code != 200:
-            await update.message.reply_text(
-                f"GitHub error: "
-                f"{response.status_code}"
-            )
-            return
-
-        data = response.json()
-
+    if response.status_code != 200:
         await update.message.reply_text(
-            "GitHub подключён ✅\n\n"
-            f"Repo: {data.get('full_name')}\n"
-            f"Branch: {data.get('default_branch')}\n"
-            f"Visibility: {data.get('visibility')}"
+            f"GitHub error: "
+            f"{response.status_code}"
         )
+        return
 
-    except Exception as exc:
-        logger.exception(
-            "Repo check failed"
-        )
+    data = response.json()
 
-        await update.message.reply_text(
-            f"GitHub error ❌\n{exc}"
-        )
+    await update.message.reply_text(
+        "GitHub подключён ✅\n\n"
+        f"Repo: {data.get('full_name')}\n"
+        f"Branch: {data.get('default_branch')}\n"
+        f"Visibility: {data.get('visibility')}"
+    )
 
 
 async def reset(
@@ -574,7 +627,7 @@ async def message_handler(
 
     except Exception as exc:
         logger.exception(
-            "Atlas error"
+            "Telegram Atlas error"
         )
 
         await update.message.reply_text(
@@ -593,10 +646,26 @@ async def error_handler(
     )
 
 
+def run_api():
+    uvicorn.run(
+        api,
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info",
+    )
+
+
 def main():
     logger.info(
-        "ATLAS WRITE CORE ONLINE"
+        "ATLAS API CORE ONLINE"
     )
+
+    api_thread = threading.Thread(
+        target=run_api,
+        daemon=True,
+    )
+
+    api_thread.start()
 
     app = (
         Application.builder()
