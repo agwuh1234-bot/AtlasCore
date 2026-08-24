@@ -29,27 +29,38 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("atlas")
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+openai_client = OpenAI(
+    api_key=OPENAI_API_KEY
+)
 
 SYSTEM_PROMPT = """
 Ты Atlas — персональный ИИ-ассистент и ядро автоматизации.
 
-У тебя есть реальные инструменты GitHub.
+У тебя есть реальные инструменты GitHub для репозитория AtlasCore.
 
-Если пользователь спрашивает о репозитории, коде или файлах:
-используй инструменты, а не придумывай ответ.
+Ты умеешь:
+- просматривать файлы;
+- читать файлы;
+- создавать новые файлы;
+- полностью обновлять существующие файлы;
+- делать GitHub commit.
 
-Если пользователь просит изменить или создать файл в AtlasCore:
+Если пользователь просит проверить код или репозиторий,
+обязательно используй GitHub-инструменты.
+
+Если пользователь просит создать или изменить файл,
 используй github_write_file.
 
-Никогда не утверждай, что файл изменён или создан,
-если инструмент фактически не выполнил запись.
+Никогда не говори, что действие выполнено,
+если инструмент вернул ошибку.
 
-При изменении main.py будь особенно осторожен.
-Не удаляй рабочие функции без явного запроса пользователя.
+При изменении main.py сначала прочитай текущий файл
+и не удаляй рабочие функции без необходимости.
 
 Отвечай на языке пользователя.
 """
+
 
 TOOLS = [
     {
@@ -61,7 +72,7 @@ TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Путь внутри репозитория. Пустая строка означает корень.",
+                    "description": "Путь внутри репозитория. Для корня используй пустую строку.",
                 }
             },
             "required": ["path"],
@@ -89,13 +100,13 @@ TOOLS = [
     {
         "type": "function",
         "name": "github_write_file",
-        "description": "Создать новый или полностью заменить существующий текстовый файл в AtlasCore и сделать commit",
+        "description": "Создать или полностью обновить текстовый файл в AtlasCore и сделать commit",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Путь к файлу, например notes.txt или main.py",
+                    "description": "Путь к файлу",
                 },
                 "content": {
                     "type": "string",
@@ -103,7 +114,7 @@ TOOLS = [
                 },
                 "commit_message": {
                     "type": "string",
-                    "description": "Сообщение Git commit",
+                    "description": "Сообщение commit",
                 },
             },
             "required": [
@@ -129,40 +140,46 @@ def github_headers():
 async def github_list_files(path=""):
     url = f"https://api.github.com/repos/{REPO}/contents/{path}"
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         response = await client.get(
             url,
             headers=github_headers(),
         )
 
     if response.status_code != 200:
-        return json.dumps({
-            "ok": False,
-            "status": response.status_code,
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "status": response.status_code,
+                "error": response.text[:500],
+            },
+            ensure_ascii=False,
+        )
 
     data = response.json()
 
     if isinstance(data, list):
-        result = [
+        items = [
             {
-                "name": item["name"],
-                "path": item["path"],
-                "type": item["type"],
+                "name": item.get("name"),
+                "path": item.get("path"),
+                "type": item.get("type"),
             }
             for item in data
         ]
     else:
-        result = {
-            "name": data.get("name"),
-            "path": data.get("path"),
-            "type": data.get("type"),
-        }
+        items = [
+            {
+                "name": data.get("name"),
+                "path": data.get("path"),
+                "type": data.get("type"),
+            }
+        ]
 
     return json.dumps(
         {
             "ok": True,
-            "items": result,
+            "items": items,
         },
         ensure_ascii=False,
     )
@@ -171,45 +188,55 @@ async def github_list_files(path=""):
 async def github_read_file(path):
     url = f"https://api.github.com/repos/{REPO}/contents/{path}"
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         response = await client.get(
             url,
             headers=github_headers(),
         )
 
     if response.status_code != 200:
-        return json.dumps({
-            "ok": False,
-            "status": response.status_code,
-            "path": path,
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "status": response.status_code,
+                "path": path,
+                "error": response.text[:500],
+            },
+            ensure_ascii=False,
+        )
 
     data = response.json()
 
     if data.get("type") != "file":
-        return json.dumps({
-            "ok": False,
-            "error": "not_a_file",
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error": "not_a_file",
+                "path": path,
+            },
+            ensure_ascii=False,
+        )
 
     try:
         content = base64.b64decode(
             data["content"]
         ).decode("utf-8")
-    except Exception:
-        return json.dumps({
-            "ok": False,
-            "error": "decode_failed",
-        })
-
-    content = content[:20000]
+    except Exception as exc:
+        return json.dumps(
+            {
+                "ok": False,
+                "error": "decode_failed",
+                "details": str(exc),
+            },
+            ensure_ascii=False,
+        )
 
     return json.dumps(
         {
             "ok": True,
             "path": path,
-            "content": content,
             "sha": data.get("sha"),
+            "content": content[:30000],
         },
         ensure_ascii=False,
     )
@@ -230,7 +257,7 @@ async def github_write_file(
         "branch": "main",
     }
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         current = await client.get(
             url,
             headers=github_headers(),
@@ -238,30 +265,45 @@ async def github_write_file(
 
         if current.status_code == 200:
             current_data = current.json()
+
+            if current_data.get("type") != "file":
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "path_is_not_file",
+                    },
+                    ensure_ascii=False,
+                )
+
             payload["sha"] = current_data["sha"]
 
         elif current.status_code != 404:
-            return json.dumps({
-                "ok": False,
-                "status": current.status_code,
-                "step": "read_existing",
-            })
+            return json.dumps(
+                {
+                    "ok": False,
+                    "status": current.status_code,
+                    "step": "read_existing",
+                    "error": current.text[:500],
+                },
+                ensure_ascii=False,
+            )
 
         response = await client.put(
             url,
-            headers={
-                **github_headers(),
-                "Content-Type": "application/json",
-            },
+            headers=github_headers(),
             json=payload,
         )
 
     if response.status_code not in (200, 201):
-        return json.dumps({
-            "ok": False,
-            "status": response.status_code,
-            "body": response.text[:1000],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "status": response.status_code,
+                "step": "write",
+                "error": response.text[:1000],
+            },
+            ensure_ascii=False,
+        )
 
     data = response.json()
 
@@ -269,20 +311,21 @@ async def github_write_file(
         {
             "ok": True,
             "path": path,
-            "commit_sha": data.get(
-                "commit",
-                {}
-            ).get("sha"),
-            "html_url": data.get(
-                "content",
-                {}
-            ).get("html_url"),
+            "commit_sha": (
+                data.get("commit", {}).get("sha")
+            ),
+            "file_url": (
+                data.get("content", {}).get("html_url")
+            ),
         },
         ensure_ascii=False,
     )
 
 
-async def execute_tool(name, arguments):
+async def execute_tool(
+    name,
+    arguments,
+):
     if name == "github_list_files":
         return await github_list_files(
             arguments.get("path", "")
@@ -300,14 +343,20 @@ async def execute_tool(name, arguments):
             arguments["commit_message"],
         )
 
-    return json.dumps({
-        "ok": False,
-        "error": "unknown_tool",
-    })
+    return json.dumps(
+        {
+            "ok": False,
+            "error": "unknown_tool",
+            "tool": name,
+        },
+        ensure_ascii=False,
+    )
 
 
 def create_response(**kwargs):
-    return openai_client.responses.create(**kwargs)
+    return openai_client.responses.create(
+        **kwargs
+    )
 
 
 async def run_atlas(
@@ -323,9 +372,9 @@ async def run_atlas(
     }
 
     if previous_response_id:
-        request[
-            "previous_response_id"
-        ] = previous_response_id
+        request["previous_response_id"] = (
+            previous_response_id
+        )
 
     response = await asyncio.to_thread(
         create_response,
@@ -361,125 +410,240 @@ async def run_atlas(
 
             except Exception as exc:
                 logger.exception(
-                    "Tool failed"
+                    "Tool execution failed"
                 )
 
-                            result = json.dumps(
+                result = json.dumps(
+                    {
+                        "ok": False,
+                        "error": str(exc),
+                    },
+                    ensure_ascii=False,
+                )
+
+            outputs.append(
                 {
-                    "ok": False,
-                    "error": str(exc),
-                },
-                ensure_ascii=False,
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": result,
+                }
             )
 
-        outputs.append(
-            {
-                "type": "function_call_output",
-                "call_id": call.call_id,
-                "output": result,
-            }
+        response = await asyncio.to_thread(
+            create_response,
+            model=MODEL,
+            instructions=SYSTEM_PROMPT,
+            previous_response_id=response.id,
+            input=outputs,
+            tools=TOOLS,
+            tool_choice="auto",
         )
 
-    request = {
-        "model": MODEL,
-        "previous_response_id": response.id,
-        "input": outputs,
-        "tools": TOOLS,
-    }
-
-    response = await asyncio.to_thread(
-        create_response,
-        **request,
-    )
-
-return response
+    return response
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     await update.message.reply_text(
-        "Atlas online ✅\n"
-        "GitHub подключён.\n"
-        "ИИ подключён."
+        "ATLAS ONLINE ✅\n\n"
+        "OpenAI: ✅\n"
+        "GitHub READ: ✅\n"
+        "GitHub WRITE: ✅\n"
+        "Railway: ✅\n\n"
+        "Atlas готов к работе."
     )
 
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    github_status = "✅ подключён" if GITHUB_TOKEN else "❌ не подключён"
-    openai_status = "✅ подключён" if OPENAI_API_KEY else "❌ не подключён"
+async def status(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    railway = os.environ.get(
+        "RAILWAY_ENVIRONMENT_NAME",
+        "unknown",
+    )
 
     await update.message.reply_text(
-        "ATLAS STATUS\n\n"
+        "ATLAS STATUS ✅\n\n"
         "Telegram: ✅ online\n"
-        "Railway: production\n"
-        f"OpenAI: {openai_status}\n"
-        f"GitHub: {github_status}\n"
-        f"Repo: {GITHUB_REPO}"
+        f"Railway: {railway}\n"
+        "OpenAI: ✅\n"
+        "GitHub READ: ✅\n"
+        "GitHub WRITE: ✅\n"
+        f"Repo: {REPO}\n"
+        f"Model: {MODEL}"
     )
 
 
-async def repo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def repo(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     try:
-        info = await github_request(
-            "GET",
-            f"/repos/{GITHUB_REPO}",
-        )
+        url = f"https://api.github.com/repos/{REPO}"
+
+        async with httpx.AsyncClient(
+            timeout=20
+        ) as client:
+            response = await client.get(
+                url,
+                headers=github_headers(),
+            )
+
+        if response.status_code != 200:
+            await update.message.reply_text(
+                f"GitHub error: "
+                f"{response.status_code}"
+            )
+            return
+
+        data = response.json()
 
         await update.message.reply_text(
             "GitHub подключён ✅\n\n"
-            f"Repo: {info.get('full_name')}\n"
-            f"Branch: {info.get('default_branch')}\n"
-            f"Visibility: {'private' if info.get('private') else 'public'}"
+            f"Repo: {data.get('full_name')}\n"
+            f"Branch: {data.get('default_branch')}\n"
+            f"Visibility: {data.get('visibility')}"
         )
 
     except Exception as exc:
+        logger.exception(
+            "Repo check failed"
+        )
+
         await update.message.reply_text(
             f"GitHub error ❌\n{exc}"
         )
+
+
+async def reset(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    context.user_data.pop(
+        "previous_response_id",
+        None,
+    )
+
+    await update.message.reply_text(
+        "Память диалога очищена ✅"
+    )
 
 
 async def message_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    if not update.message or not update.message.text:
+    if (
+        not update.message
+        or not update.message.text
+    ):
         return
 
-    try:
-        response = await run_atlas(update.message.text)
+    await update.message.chat.send_action(
+        ChatAction.TYPING
+    )
 
-        text = getattr(response, "output_text", None)
+    try:
+        previous_id = context.user_data.get(
+            "previous_response_id"
+        )
+
+        response = await run_atlas(
+            update.message.text,
+            previous_id,
+        )
+
+        context.user_data[
+            "previous_response_id"
+        ] = response.id
+
+        text = response.output_text.strip()
 
         if not text:
-            text = "Atlas выполнил запрос, но не вернул текстовый ответ."
-
-        await update.message.reply_text(text[:4000])
-
-    except Exception as exc:
-        logger.exception("Atlas error")
+            text = (
+                "Atlas выполнил запрос, "
+                "но не вернул текстовый ответ."
+            )
 
         await update.message.reply_text(
-            f"Atlas error ❌\n{exc}"
+            text[:4000]
+        )
+
+    except Exception as exc:
+        logger.exception(
+            "Atlas error"
+        )
+
+        await update.message.reply_text(
+            f"Atlas error ❌\n"
+            f"{type(exc).__name__}: {exc}"
         )
 
 
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    logger.exception(
+        "Telegram error",
+        exc_info=context.error,
+    )
+
+
 def main():
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN is missing")
+    logger.info(
+        "ATLAS WRITE CORE ONLINE"
+    )
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .build()
+    )
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("repo", repo))
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start,
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "status",
+            status,
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "repo",
+            repo,
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "reset",
+            reset,
+        )
+    )
 
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT
+            & ~filters.COMMAND,
             message_handler,
         )
     )
 
-    logger.info("Atlas starting...")
+    app.add_error_handler(
+        error_handler
+    )
+
     app.run_polling()
 
 
