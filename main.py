@@ -33,6 +33,12 @@ MODEL = "gpt-5.4-mini"
 
 PORT = int(os.environ.get("PORT", "8080"))
 
+ALLOWED_USER_IDS = {
+    int(x)
+    for x in os.environ.get("ALLOWED_USER_IDS", "").split(",")
+    if x.strip()
+}
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -457,6 +463,12 @@ def verify_api_key(
         )
 
 
+def verify_user_access(user_id: int | None):
+    if ALLOWED_USER_IDS and (user_id is None or user_id not in ALLOWED_USER_IDS):
+        return False
+    return True
+
+
 @api.get("/health")
 async def api_health():
     return {
@@ -465,6 +477,7 @@ async def api_health():
         "telegram": True,
         "openai": True,
         "github": True,
+        "private": bool(ALLOWED_USER_IDS),
     }
 
 
@@ -507,6 +520,8 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    if not verify_user_access(update.effective_user.id if update.effective_user else None):
+        return
     await update.message.reply_text(
         "ATLAS ONLINE ✅\n\n"
         "Telegram: ✅\n"
@@ -521,6 +536,8 @@ async def status(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    if not verify_user_access(update.effective_user.id if update.effective_user else None):
+        return
     railway = os.environ.get(
         "RAILWAY_ENVIRONMENT_NAME",
         "unknown",
@@ -543,6 +560,8 @@ async def repo(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    if not verify_user_access(update.effective_user.id if update.effective_user else None):
+        return
     url = f"https://api.github.com/repos/{REPO}"
 
     async with httpx.AsyncClient(
@@ -574,6 +593,8 @@ async def reset(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    if not verify_user_access(update.effective_user.id if update.effective_user else None):
+        return
     context.user_data.pop(
         "previous_response_id",
         None,
@@ -592,6 +613,9 @@ async def message_handler(
         not update.message
         or not update.message.text
     ):
+        return
+
+    if not verify_user_access(update.effective_user.id if update.effective_user else None):
         return
 
     await update.message.chat.send_action(
