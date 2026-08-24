@@ -448,11 +448,9 @@ class TaskRequest(BaseModel):
 
 
 def verify_api_key(
-    authorization: str | None,
+    x_atlas_key: str | None,
 ):
-    expected = f"Bearer {ATLAS_API_KEY}"
-
-    if authorization != expected:
+    if x_atlas_key != ATLAS_API_KEY:
         raise HTTPException(
             status_code=401,
             detail="Unauthorized",
@@ -473,12 +471,13 @@ async def api_health():
 @api.post("/task")
 async def api_task(
     body: TaskRequest,
-    authorization: str | None = Header(
-        default=None
+    x_atlas_key: str | None = Header(
+        default=None,
+        alias="X-Atlas-Key",
     ),
 ):
     verify_api_key(
-        authorization
+        x_atlas_key
     )
 
     try:
