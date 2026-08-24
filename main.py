@@ -39,15 +39,17 @@ SYSTEM_PROMPT = """
 Если пользователь спрашивает о репозитории, коде или файлах:
 используй инструменты, а не придумывай ответ.
 
-Никогда не утверждай, что прочитал файл или проверил репозиторий,
-если инструмент фактически не был вызван.
+Если пользователь просит изменить или создать файл в AtlasCore:
+используй github_write_file.
 
-Сейчас GitHub работает только в режиме чтения.
-Ничего не изменяй и не обещай изменить.
+Никогда не утверждай, что файл изменён или создан,
+если инструмент фактически не выполнил запись.
+
+При изменении main.py будь особенно осторожен.
+Не удаляй рабочие функции без явного запроса пользователя.
 
 Отвечай на языке пользователя.
 """
-
 
 TOOLS = [
     {
@@ -80,6 +82,35 @@ TOOLS = [
                 }
             },
             "required": ["path"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "github_write_file",
+        "description": "Создать новый или полностью заменить существующий текстовый файл в AtlasCore и сделать commit",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Путь к файлу, например notes.txt или main.py",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Полное новое содержимое файла",
+                },
+                "commit_message": {
+                    "type": "string",
+                    "description": "Сообщение Git commit",
+                },
+            },
+            "required": [
+                "path",
+                "content",
+                "commit_message",
+            ],
             "additionalProperties": False,
         },
         "strict": True,
@@ -129,7 +160,10 @@ async def github_list_files(path=""):
         }
 
     return json.dumps(
-        {"ok": True, "items": result},
+        {
+            "ok": True,
+            "items": result,
+        },
         ensure_ascii=False,
     )
 
@@ -168,7 +202,6 @@ async def github_read_file(path):
             "error": "decode_failed",
         })
 
-    # Защита от слишком больших ответов
     content = content[:20000]
 
     return json.dumps(
@@ -176,6 +209,74 @@ async def github_read_file(path):
             "ok": True,
             "path": path,
             "content": content,
+            "sha": data.get("sha"),
+        },
+        ensure_ascii=False,
+    )
+
+
+async def github_write_file(
+    path,
+    content,
+    commit_message,
+):
+    url = f"https://api.github.com/repos/{REPO}/contents/{path}"
+
+    payload = {
+        "message": commit_message,
+        "content": base64.b64encode(
+            content.encode("utf-8")
+        ).decode("utf-8"),
+        "branch": "main",
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        current = await client.get(
+            url,
+            headers=github_headers(),
+        )
+
+        if current.status_code == 200:
+            current_data = current.json()
+            payload["sha"] = current_data["sha"]
+
+        elif current.status_code != 404:
+            return json.dumps({
+                "ok": False,
+                "status": current.status_code,
+                "step": "read_existing",
+            })
+
+        response = await client.put(
+            url,
+            headers={
+                **github_headers(),
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+
+    if response.status_code not in (200, 201):
+        return json.dumps({
+            "ok": False,
+            "status": response.status_code,
+            "body": response.text[:1000],
+        })
+
+    data = response.json()
+
+    return json.dumps(
+        {
+            "ok": True,
+            "path": path,
+            "commit_sha": data.get(
+                "commit",
+                {}
+            ).get("sha"),
+            "html_url": data.get(
+                "content",
+                {}
+            ).get("html_url"),
         },
         ensure_ascii=False,
     )
@@ -192,6 +293,13 @@ async def execute_tool(name, arguments):
             arguments["path"]
         )
 
+    if name == "github_write_file":
+        return await github_write_file(
+            arguments["path"],
+            arguments["content"],
+            arguments["commit_message"],
+        )
+
     return json.dumps({
         "ok": False,
         "error": "unknown_tool",
@@ -202,7 +310,10 @@ def create_response(**kwargs):
     return openai_client.responses.create(**kwargs)
 
 
-async def run_atlas(text, previous_response_id=None):
+async def run_atlas(
+    text,
+    previous_response_id=None,
+):
     request = {
         "model": MODEL,
         "instructions": SYSTEM_PROMPT,
@@ -212,19 +323,24 @@ async def run_atlas(text, previous_response_id=None):
     }
 
     if previous_response_id:
-        request["previous_response_id"] = previous_response_id
+        request[
+            "previous_response_id"
+        ] = previous_response_id
 
     response = await asyncio.to_thread(
         create_response,
         **request,
     )
 
-    # До нескольких последовательных действий
-    for _ in range(6):
+    for _ in range(8):
         tool_calls = [
             item
             for item in response.output
-            if getattr(item, "type", None) == "function_call"
+            if getattr(
+                item,
+                "type",
+                None,
+            ) == "function_call"
         ]
 
         if not tool_calls:
@@ -234,162 +350,19 @@ async def run_atlas(text, previous_response_id=None):
 
         for call in tool_calls:
             try:
-                arguments = json.loads(call.arguments)
+                arguments = json.loads(
+                    call.arguments
+                )
+
                 result = await execute_tool(
                     call.name,
                     arguments,
                 )
 
             except Exception as exc:
-                logger.exception("Tool failed")
+                logger.exception(
+                    "Tool failed"
+                )
 
                 result = json.dumps({
-                    "ok": False,
-                    "error": type(exc).__name__,
-                })
-
-            outputs.append({
-                "type": "function_call_output",
-                "call_id": call.call_id,
-                "output": result,
-            })
-
-        response = await asyncio.to_thread(
-            create_response,
-            model=MODEL,
-            instructions=SYSTEM_PROMPT,
-            previous_response_id=response.id,
-            input=outputs,
-            tools=TOOLS,
-            tool_choice="auto",
-        )
-
-    return response
-
-
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    await update.message.reply_text(
-        "ATLAS ONLINE ✅\n\n"
-        "ИИ: ✅\n"
-        "GitHub tools: ✅ READ\n"
-        "Railway: ✅\n\n"
-        "Теперь можешь спросить:\n"
-        "«Какие файлы есть в AtlasCore?»\n"
-        "или\n"
-        "«Прочитай main.py и объясни код»"
-    )
-
-
-async def status(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    await update.message.reply_text(
-        "ATLAS STATUS ✅\n\n"
-        "Telegram: ✅\n"
-        "OpenAI: ✅\n"
-        "GitHub: ✅ READ\n"
-        "Railway: ✅\n"
-        f"Model: {MODEL}"
-    )
-
-
-async def reset(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    context.user_data.pop(
-        "previous_response_id",
-        None,
-    )
-
-    await update.message.reply_text(
-        "Память диалога очищена ✅"
-    )
-
-
-async def message(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    text = update.message.text or ""
-
-    await update.message.chat.send_action(
-        ChatAction.TYPING
-    )
-
-    try:
-        previous_id = context.user_data.get(
-            "previous_response_id"
-        )
-
-        response = await run_atlas(
-            text,
-            previous_id,
-        )
-
-        context.user_data[
-            "previous_response_id"
-        ] = response.id
-
-        answer = response.output_text.strip()
-
-        if not answer:
-            answer = "Задача выполнена, но текстового ответа нет."
-
-        await update.message.reply_text(
-            answer[:4000]
-        )
-
-    except Exception as exc:
-        logger.exception("Atlas failed")
-
-        await update.message.reply_text(
-            f"Ошибка Atlas: {type(exc).__name__}"
-        )
-
-
-async def error_handler(
-    update: object,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    logger.exception(
-        "Telegram error",
-        exc_info=context.error,
-    )
-
-
-def main():
-    logger.info("ATLAS TOOL CORE ONLINE")
-
-    app = Application.builder().token(
-        BOT_TOKEN
-    ).build()
-
-    app.add_handler(
-        CommandHandler("start", start)
-    )
-    app.add_handler(
-        CommandHandler("status", status)
-    )
-    app.add_handler(
-        CommandHandler("reset", reset)
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            message,
-        )
-    )
-
-    app.add_error_handler(error_handler)
-
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
+                    "ok
