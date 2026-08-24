@@ -1,8 +1,11 @@
 import os
 import logging
+import asyncio
 import httpx
 
+from openai import OpenAI
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -12,8 +15,11 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+
 REPO = "agwuh1234-bot/AtlasCore"
+MODEL = "gpt-5.4-mini"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,37 +28,45 @@ logging.basicConfig(
 
 logger = logging.getLogger("atlas")
 
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+SYSTEM_PROMPT = """
+Ты Atlas — персональный ИИ-ассистент и ядро автоматизации.
+
+Ты работаешь через Telegram.
+
+Твои задачи:
+- понимать запрос пользователя;
+- отвечать кратко и по делу;
+- помогать с кодом, бизнесом, автоматизацией и организацией задач;
+- понимать, когда для задачи понадобится GitHub, Railway, Shopify или другой инструмент;
+- не утверждать, что действие выполнено, если инструмент фактически его не выполнил.
+
+Отвечай на языке пользователя.
+"""
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "ATLAS CORE ONLINE ✅\n\n"
-        "Ядро запущено.\n"
+        "ATLAS ONLINE ✅\n\n"
+        "ИИ-мозг подключён.\n"
+        "Напиши мне любую задачу.\n\n"
         "/status — статус системы\n"
-        "/repo — проверить GitHub\n"
-        "/help — команды"
-    )
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Команды Atlas:\n\n"
-        "/start — запуск\n"
-        "/status — состояние ядра\n"
-        "/repo — проверка GitHub\n"
-        "/help — помощь"
+        "/repo — GitHub\n"
+        "/reset — очистить память диалога"
     )
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     railway = os.environ.get("RAILWAY_ENVIRONMENT_NAME", "unknown")
-    github = "✅ подключён" if GITHUB_TOKEN else "❌ не подключён"
 
     await update.message.reply_text(
         "ATLAS STATUS\n\n"
         "Telegram: ✅ online\n"
         f"Railway: {railway}\n"
-        f"GitHub: {github}\n"
-        f"Repo: {REPO}"
+        "OpenAI: ✅ configured\n"
+        f"GitHub: {'✅ configured' if GITHUB_TOKEN else '❌ missing'}\n"
+        f"Model: {MODEL}"
     )
 
 
@@ -78,34 +92,68 @@ async def repo_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = response.json()
 
             await update.message.reply_text(
-                "GitHub подключён ✅\n\n"
+                "GitHub ✅\n\n"
                 f"Repo: {data.get('full_name')}\n"
                 f"Branch: {data.get('default_branch')}\n"
                 f"Visibility: {data.get('visibility')}"
             )
-
         else:
             await update.message.reply_text(
                 f"GitHub error: {response.status_code}"
             )
 
-    except Exception as exc:
+    except Exception:
         logger.exception("GitHub check failed")
+        await update.message.reply_text("Ошибка подключения к GitHub.")
 
-        await update.message.reply_text(
-            f"GitHub check failed: {type(exc).__name__}"
-        )
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("previous_response_id", None)
+    await update.message.reply_text("Память текущего диалога очищена ✅")
+
+
+def ask_openai(text: str, previous_response_id=None):
+    kwargs = {
+        "model": MODEL,
+        "instructions": SYSTEM_PROMPT,
+        "input": text,
+    }
+
+    if previous_response_id:
+        kwargs["previous_response_id"] = previous_response_id
+
+    return openai_client.responses.create(**kwargs)
 
 
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
 
-    await update.message.reply_text(
-        "Задачу принял ✅\n\n"
-        f"{text}\n\n"
-        "Atlas пока работает как базовое ядро.\n"
-        "Следующий этап — подключение ИИ-мозга и инструментов."
-    )
+    await update.message.chat.send_action(ChatAction.TYPING)
+
+    try:
+        previous_id = context.user_data.get("previous_response_id")
+
+        response = await asyncio.to_thread(
+            ask_openai,
+            text,
+            previous_id,
+        )
+
+        context.user_data["previous_response_id"] = response.id
+
+        answer = response.output_text.strip()
+
+        if not answer:
+            answer = "Не удалось получить текстовый ответ."
+
+        await update.message.reply_text(answer[:4000])
+
+    except Exception as exc:
+        logger.exception("OpenAI request failed")
+
+        await update.message.reply_text(
+            f"Ошибка ИИ: {type(exc).__name__}"
+        )
 
 
 async def error_handler(
@@ -113,20 +161,20 @@ async def error_handler(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     logger.exception(
-        "Unhandled Telegram error",
+        "Telegram error",
         exc_info=context.error,
     )
 
 
 def main():
-    logger.info("ATLAS CORE ONLINE")
+    logger.info("ATLAS AI CORE ONLINE")
 
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("repo", repo_status))
+    app.add_handler(CommandHandler("reset", reset))
 
     app.add_handler(
         MessageHandler(
@@ -142,3 +190,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
