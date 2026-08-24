@@ -364,5 +364,124 @@ async def run_atlas(
                     "Tool failed"
                 )
 
-                result = json.dumps({
-                    "ok
+                            result = json.dumps(
+                {
+                    "ok": False,
+                    "error": str(exc),
+                },
+                ensure_ascii=False,
+            )
+
+        outputs.append(
+            {
+                "type": "function_call_output",
+                "call_id": call.call_id,
+                "output": result,
+            }
+        )
+
+    request = {
+        "model": MODEL,
+        "previous_response_id": response.id,
+        "input": outputs,
+        "tools": TOOLS,
+    }
+
+    response = await asyncio.to_thread(
+        create_response,
+        **request,
+    )
+
+return response
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Atlas online ✅\n"
+        "GitHub подключён.\n"
+        "ИИ подключён."
+    )
+
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    github_status = "✅ подключён" if GITHUB_TOKEN else "❌ не подключён"
+    openai_status = "✅ подключён" if OPENAI_API_KEY else "❌ не подключён"
+
+    await update.message.reply_text(
+        "ATLAS STATUS\n\n"
+        "Telegram: ✅ online\n"
+        "Railway: production\n"
+        f"OpenAI: {openai_status}\n"
+        f"GitHub: {github_status}\n"
+        f"Repo: {GITHUB_REPO}"
+    )
+
+
+async def repo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        info = await github_request(
+            "GET",
+            f"/repos/{GITHUB_REPO}",
+        )
+
+        await update.message.reply_text(
+            "GitHub подключён ✅\n\n"
+            f"Repo: {info.get('full_name')}\n"
+            f"Branch: {info.get('default_branch')}\n"
+            f"Visibility: {'private' if info.get('private') else 'public'}"
+        )
+
+    except Exception as exc:
+        await update.message.reply_text(
+            f"GitHub error ❌\n{exc}"
+        )
+
+
+async def message_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if not update.message or not update.message.text:
+        return
+
+    try:
+        response = await run_atlas(update.message.text)
+
+        text = getattr(response, "output_text", None)
+
+        if not text:
+            text = "Atlas выполнил запрос, но не вернул текстовый ответ."
+
+        await update.message.reply_text(text[:4000])
+
+    except Exception as exc:
+        logger.exception("Atlas error")
+
+        await update.message.reply_text(
+            f"Atlas error ❌\n{exc}"
+        )
+
+
+def main():
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN is missing")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("repo", repo))
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            message_handler,
+        )
+    )
+
+    logger.info("Atlas starting...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
