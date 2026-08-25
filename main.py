@@ -713,12 +713,17 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
 
         for call in tool_calls:
             try:
-                arguments = json.loads(call.arguments)
+                if call.name == 'claude_ask' and claude_used:
+                    result = json.dumps({"ok": false, "error": "claude_call_limit_reached"}, ensure_ascii=False)
+                else:
+                    if call.name == 'claude_ask':
+                        claude_used = True
+                    arguments = json.loads(call.arguments)
 
-                result = await execute_tool(
-                    call.name,
-                    arguments,
-                )
+                    result = await execute_tool(
+                        call.name,
+                        arguments,
+                    )
 
             except Exception as exc:
                 logger.exception("Tool execution failed")
