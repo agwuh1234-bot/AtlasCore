@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from atlas_scheduler import normalize_schedule, next_run_at
+
 
 DEFAULT_PROJECTS = (
     ("project-general", "General"),
@@ -149,6 +151,23 @@ class AtlasStore:
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS atlas_schedules (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                task TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                next_run_at DOUBLE PRECISION,
+                last_run_at DOUBLE PRECISION,
+                last_job_id TEXT,
+                lease_owner TEXT,
+                lease_until DOUBLE PRECISION,
+                created_at DOUBLE PRECISION NOT NULL,
+                updated_at DOUBLE PRECISION NOT NULL
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS atlas_usage (
                 id TEXT PRIMARY KEY,
                 day TEXT NOT NULL,
@@ -192,6 +211,7 @@ class AtlasStore:
             "CREATE INDEX IF NOT EXISTS atlas_memories_project_idx ON atlas_memories(project_id, updated_at)",
             "CREATE INDEX IF NOT EXISTS atlas_files_project_idx ON atlas_files(project_id, updated_at)",
             "CREATE INDEX IF NOT EXISTS atlas_push_enabled_idx ON atlas_push_subscriptions(enabled, updated_at)",
+            "CREATE INDEX IF NOT EXISTS atlas_schedules_due_idx ON atlas_schedules(enabled, next_run_at)",
             "CREATE INDEX IF NOT EXISTS atlas_usage_day_idx ON atlas_usage(day, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_actions_project_idx ON atlas_actions(project_id, created_at)",
         ]
@@ -670,6 +690,210 @@ class AtlasStore:
                 conn,
                 "DELETE FROM atlas_files WHERE id = ? AND project_id = ?",
                 (file_id, project_id),
+            )
+        return cursor.rowcount == 1
+
+    @staticmethod
+    def _format_schedule(row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        item = dict(row)
+        try:
+            config = json.loads(item.pop("config_json", "") or "{}")
+        except (TypeError, ValueError):
+            config = {}
+        item.update(config)
+        item["enabled"] = bool(item.get("enabled"))
+        return item
+
+    def create_schedule(
+        self,
+        project_id: str | None,
+        *,
+        name: str,
+        task: str,
+        frequency: str,
+        timezone_name: str = "Europe/Berlin",
+        time_local: str = "09:00",
+        weekdays: list[int] | None = None,
+        run_at: str | None = None,
+    ) -> dict[str, Any]:
+        project_id = self._project_id(project_id)
+        self.ensure_project(project_id)
+        clean_name = " ".join((name or "").split())[:100]
+        clean_task = " ".join((task or "").split())[:6000]
+        if not clean_name or not clean_task:
+            raise AtlasStoreError("Schedule name and task are required")
+        config = normalize_schedule(
+            frequency=frequency,
+            timezone_name=timezone_name,
+            time_local=time_local,
+            weekdays=weekdays,
+            run_at=run_at,
+        )
+        now = time.time()
+        next_time = next_run_at(config, now)
+        if next_time is None:
+            raise AtlasStoreError("Schedule must run in the future")
+        schedule_id = "schedule-" + uuid.uuid4().hex[:20]
+        with self._connection(immediate=True) as conn:
+            self._execute(
+                conn,
+                """
+                INSERT INTO atlas_schedules(
+                    id, project_id, name, task, config_json, enabled,
+                    next_run_at, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, 1, ?, ?, ?)
+                """,
+                (
+                    schedule_id,
+                    project_id,
+                    clean_name,
+                    clean_task,
+                    json.dumps(config, ensure_ascii=False),
+                    next_time,
+                    now,
+                    now,
+                ),
+            )
+        return self.get_schedule(project_id, schedule_id) or {}
+
+    def get_schedule(
+        self, project_id: str | None, schedule_id: str
+    ) -> dict[str, Any] | None:
+        project_id = self._project_id(project_id)
+        with self._connection() as conn:
+            row = self._execute(
+                conn,
+                "SELECT * FROM atlas_schedules WHERE id = ? AND project_id = ?",
+                ((schedule_id or "")[:100], project_id),
+            ).fetchone()
+        return self._format_schedule(self._dict(row))
+
+    def list_schedules(self, project_id: str | None) -> list[dict[str, Any]]:
+        project_id = self._project_id(project_id)
+        with self._connection() as conn:
+            rows = self._execute(
+                conn,
+                """
+                SELECT * FROM atlas_schedules
+                WHERE project_id = ?
+                ORDER BY enabled DESC, next_run_at, created_at
+                """,
+                (project_id,),
+            ).fetchall()
+        return [self._format_schedule(dict(row)) for row in rows]
+
+    def set_schedule_enabled(
+        self, project_id: str | None, schedule_id: str, enabled: bool
+    ) -> dict[str, Any] | None:
+        project_id = self._project_id(project_id)
+        current = self.get_schedule(project_id, schedule_id)
+        if not current:
+            return None
+        next_time = next_run_at(current, time.time()) if enabled else current.get("next_run_at")
+        if enabled and next_time is None:
+            raise AtlasStoreError("One-time schedule is already in the past")
+        with self._connection(immediate=True) as conn:
+            self._execute(
+                conn,
+                """
+                UPDATE atlas_schedules
+                SET enabled = ?, next_run_at = ?, lease_owner = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE id = ? AND project_id = ?
+                """,
+                (int(bool(enabled)), next_time, time.time(), schedule_id, project_id),
+            )
+        return self.get_schedule(project_id, schedule_id)
+
+    def delete_schedule(self, project_id: str | None, schedule_id: str) -> bool:
+        project_id = self._project_id(project_id)
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                "DELETE FROM atlas_schedules WHERE id = ? AND project_id = ?",
+                ((schedule_id or "")[:100], project_id),
+            )
+        return cursor.rowcount == 1
+
+    def claim_due_schedules(
+        self, now: float, worker_id: str, limit: int = 3
+    ) -> list[dict[str, Any]]:
+        now = float(now)
+        limit = max(1, min(int(limit), 10))
+        claimed: list[dict[str, Any]] = []
+        with self._connection(immediate=True) as conn:
+            self._advisory_lock(conn, 19481005)
+            suffix = " FOR UPDATE SKIP LOCKED" if self.backend == "postgres" else ""
+            rows = self._execute(
+                conn,
+                """
+                SELECT * FROM atlas_schedules
+                WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
+                    AND (lease_until IS NULL OR lease_until < ?)
+                ORDER BY next_run_at
+                LIMIT ?
+                """ + suffix,
+                (now, now, limit),
+            ).fetchall()
+            for raw in rows:
+                row = dict(raw)
+                item = self._format_schedule(row) or {}
+                recurring = item.get("frequency") != "once"
+                following = next_run_at(item, now) if recurring else None
+                updated = self._execute(
+                    conn,
+                    """
+                    UPDATE atlas_schedules
+                    SET enabled = ?, last_run_at = ?, next_run_at = ?,
+                        lease_owner = ?, lease_until = ?, updated_at = ?
+                    WHERE id = ? AND enabled = 1
+                        AND (lease_until IS NULL OR lease_until < ?)
+                    """,
+                    (
+                        int(recurring),
+                        now,
+                        following,
+                        worker_id,
+                        now + 90,
+                        now,
+                        row["id"],
+                        now,
+                    ),
+                )
+                if updated.rowcount == 1:
+                    claimed.append(item)
+        return claimed
+
+    def finish_schedule_claim(
+        self, schedule_id: str, worker_id: str, job_id: str
+    ) -> bool:
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                """
+                UPDATE atlas_schedules
+                SET last_job_id = ?, lease_owner = NULL, lease_until = NULL, updated_at = ?
+                WHERE id = ? AND lease_owner = ?
+                """,
+                (job_id, time.time(), schedule_id, worker_id),
+            )
+        return cursor.rowcount == 1
+
+    def retry_schedule_claim(
+        self, schedule_id: str, worker_id: str, retry_at: float
+    ) -> bool:
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                """
+                UPDATE atlas_schedules
+                SET enabled = 1, next_run_at = ?, lease_owner = NULL,
+                    lease_until = NULL, updated_at = ?
+                WHERE id = ? AND lease_owner = ?
+                """,
+                (float(retry_at), time.time(), schedule_id, worker_id),
             )
         return cursor.rowcount == 1
 
