@@ -836,15 +836,15 @@ async def message_handler(
         logger.warning("Telegram OpenAI rate limit")
 
         await update.message.reply_text(
-            "ÐÐ¸Ð¼Ð¸Ñ OpenAI API Ð²ÑÐµÐ¼ÐµÐ½Ð½Ð¾ Ð´Ð¾ÑÑÐ¸Ð³Ð½ÑÑ."
+            "Лимит OpenAI API временно достигнут."
         )
 
-    except Exception as exc:
+    except Exception:
         logger.exception("Telegram Atlas error")
 
         await update.message.reply_text(
-            "Atlas error â\n"
-            f"{type(exc).__name__}: {exc}"
+            "Atlas error\n"
+            "Внутренняя ошибка. Попробуйте еще раз."
         )
 
 
