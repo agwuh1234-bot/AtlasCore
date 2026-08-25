@@ -292,7 +292,7 @@ select {
   border-top: 1px solid var(--atlas-border);
   display: grid;
   flex: 0 0 calc(var(--atlas-tab-height) + var(--atlas-safe-bottom));
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   padding: 4px 6px var(--atlas-safe-bottom);
   z-index: 25;
 }
@@ -520,4 +520,52 @@ select {
   .tab-button { font-size: 9px; }
   .tab-button .tab-icon { font-size: 18px; }
   .file-actions { flex-direction: column; }
+}
+
+
+.weekday-picker {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekday-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.weekday-chip span {
+  align-items: center;
+  background: var(--atlas-surface-2);
+  border: 1px solid var(--atlas-border);
+  border-radius: 10px;
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  justify-content: center;
+  min-height: 38px;
+}
+
+.weekday-chip input:checked + span {
+  background: rgba(128, 104, 255, .18);
+  border-color: rgba(128, 104, 255, .5);
+  color: #c8c0ff;
+}
+
+.schedule-task {
+  border-top: 1px solid var(--atlas-border);
+  margin-top: 10px !important;
+  padding-top: 10px;
+}
+
+.schedule-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+@media (max-width: 390px) {
+  .bottom-tabs .tab-label { font-size: 8px; }
+  .bottom-tabs { gap: 0; }
 }
