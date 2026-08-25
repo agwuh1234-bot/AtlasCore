@@ -5,10 +5,12 @@ from pathlib import Path
 
 from atlas_knowledge import (
     MEMORY_POLICY,
+    PERMISSION_LEVELS,
     SHOPIFY_PLAYBOOK,
     memory_candidates,
     plugin_registry,
     seed_project_knowledge,
+    system_registry,
 )
 from atlas_store import AtlasStore
 
@@ -53,6 +55,20 @@ class AtlasKnowledgeTests(unittest.TestCase):
                 os.environ["SHOPIFY_STORE_DOMAIN"] = old_domain
             if old_token is not None:
                 os.environ["SHOPIFY_ADMIN_ACCESS_TOKEN"] = old_token
+
+    def test_system_registry_reports_required_services_without_secrets(self):
+        registry = {item["id"]: item for item in system_registry("postgres")}
+        self.assertTrue(registry["postgres"]["connected"])
+        self.assertTrue(registry["web"]["connected"])
+        self.assertIn("openai", registry)
+        self.assertNotIn("token", str(registry).lower())
+
+    def test_permission_levels_require_confirmation_for_writes(self):
+        levels = {item["id"]: item for item in PERMISSION_LEVELS}
+        self.assertTrue(levels["read"]["automatic"])
+        self.assertTrue(levels["safe"]["automatic"])
+        self.assertTrue(levels["write"]["confirmation"])
+        self.assertTrue(levels["dangerous"]["confirmation"])
 
 
 if __name__ == "__main__":
