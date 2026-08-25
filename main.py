@@ -705,6 +705,9 @@ async def api_bridge(
             "answer": answer,
         }
 
+    except HTTPException:
+        raise
+
     except RateLimitError:
         logger.warning("OpenAI rate limit reached")
 
