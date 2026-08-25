@@ -71,6 +71,9 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger("atlas")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
+APP_JOBS = {}
+APP_JOB_TASKS = {}
+APP_JOB_TTL = 3600
 
 
 def secure_key_match(provided: str | None, expected: str) -> bool:
