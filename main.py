@@ -532,21 +532,10 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-async def atlas_task(task: str) -> dict:
-    try:
-        response = await run_atlas(task)
-        answer = (response.output_text or "").strip()
-        return {
-            "ok": True,
-            "response_id": response.id,
-            "answer": answer,
-        }
-    except Exception as exc:
-        logger.exception("MCP Atlas task failed")
-        return {
-            "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
-        }
+async def atlas_task(task: str) -> str:
+    """Run a task through Atlas Core."""
+    response = await run_atlas(task)
+    return response.output_text or ""
 
 
 mcp_app = mcp.streamable_http_app()
