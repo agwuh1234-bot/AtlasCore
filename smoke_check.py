@@ -63,7 +63,7 @@ def main() -> None:
     assert ".project-switcher" in projects_css
 
     shell_js = read_text("web/shell.js")
-    for needle in ["bottomTabs", "visualViewport", "panel-memory", "/app-plugins", "/app-actions"]:
+    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions"]:
         assert needle in shell_js, f"web/shell.js missing required text: {needle}"
 
     shell_css = read_text("web/shell.css")
