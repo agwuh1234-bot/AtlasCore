@@ -53,6 +53,7 @@ logging.basicConfig(
 
 logger = logging.getLogger("atlas")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
+mcp = FastMCP("Atlas")
 
 
 SYSTEM_PROMPT = """
