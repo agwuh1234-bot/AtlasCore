@@ -52,6 +52,7 @@ class AtlasKnowledgeTests(unittest.TestCase):
             self.assertEqual(registry["memory"]["status"], "connected")
             self.assertEqual(registry["files"]["status"], "connected")
             self.assertEqual(registry["push"]["status"], "available")
+            self.assertEqual(registry["automations"]["status"], "connected")
             self.assertTrue(registry["files"]["requires_confirmation"])
         finally:
             if old_domain is not None:
