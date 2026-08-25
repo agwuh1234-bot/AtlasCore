@@ -526,44 +526,22 @@ mcp = FastMCP(
     "AtlasCore",
     stateless_http=True,
     json_response=True,
-    streamable_http_path="/",
+    streamable_http_path="/mcp",
 )
 
 
 @mcp.tool()
-async def atlas_task(
-    task: str,
-    atlas_key: str,
-    previous_response_id: str | None = None,
-) -> dict:
-    """
-    Send a task to Atlas.
-
-    atlas_key must match the ATLAS_API_KEY environment variable.
-    """
-    if atlas_key != ATLAS_API_KEY:
-        return {
-            "ok": False,
-            "error": "Unauthorized",
-        }
-
+async def atlas_task(task: str) -> dict:
     try:
-        response = await run_atlas(
-            task,
-            previous_response_id,
-        )
-
+        response = await run_atlas(task)
         answer = (response.output_text or "").strip()
-
         return {
             "ok": True,
             "response_id": response.id,
             "answer": answer,
         }
-
     except Exception as exc:
         logger.exception("MCP Atlas task failed")
-
         return {
             "ok": False,
             "error": f"{type(exc).__name__}: {exc}",
@@ -575,8 +553,7 @@ mcp_app = mcp.streamable_http_app()
 
 @asynccontextmanager
 async def api_lifespan(app: FastAPI):
-    async with mcp.session_manager.run():
-        yield
+    yield
 
 
 api = FastAPI(
