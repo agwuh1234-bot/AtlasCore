@@ -50,6 +50,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger("atlas")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
@@ -452,7 +454,7 @@ async def run_atlas(text, previous_response_id=None):
         **request,
     )
 
-    for _ in range(MAX_TOOL_LOOPS):
+    for loop_index in range(MAX_TOOL_LOOPS):
         tool_calls = [
             item
             for item in response.output
@@ -492,6 +494,8 @@ async def run_atlas(text, previous_response_id=None):
                 }
             )
 
+        last_loop = loop_index == MAX_TOOL_LOOPS - 1
+
         response = await asyncio.to_thread(
             create_response,
             model=MODEL,
@@ -499,31 +503,17 @@ async def run_atlas(text, previous_response_id=None):
             previous_response_id=response.id,
             input=outputs,
             tools=TOOLS,
-            tool_choice="auto",
+            tool_choice="none" if last_loop else "auto",
         )
 
-    # ÐÑÐ»Ð¸ Ð¼Ð¾Ð´ÐµÐ»Ñ Ð¿Ð¾ÑÑÐ°ÑÐ¸Ð»Ð° Ð²ÑÐµ ÑÐ¸ÐºÐ»Ñ Ð½Ð° Ð¸Ð½ÑÑÑÑÐ¼ÐµÐ½ÑÑ,
-    # Ð¿ÑÐ¸Ð½ÑÐ´Ð¸ÑÐµÐ»ÑÐ½Ð¾ Ð¿ÑÐ¾ÑÐ¸Ð¼ ÑÐ¸Ð½Ð°Ð»ÑÐ½ÑÐ¹ ÑÐµÐºÑÑ Ð±ÐµÐ· Ð½Ð¾Ð²ÑÑ Ð¸Ð½ÑÑÑÑÐ¼ÐµÐ½ÑÐ¾Ð².
-    final_response = await asyncio.to_thread(
-        create_response,
-        model=MODEL,
-        instructions=SYSTEM_PROMPT,
-        previous_response_id=response.id,
-        input=(
-            "ÐÐ½ÑÑÑÑÐ¼ÐµÐ½ÑÑ Ð±Ð¾Ð»ÑÑÐµ Ð½Ðµ Ð²ÑÐ·ÑÐ²Ð°Ð¹. "
-            "ÐÐµÑÐ½Ð¸ Ð¿Ð¾Ð»ÑÐ·Ð¾Ð²Ð°ÑÐµÐ»Ñ ÐºÑÐ°ÑÐºÐ¸Ð¹ Ð¸ÑÐ¾Ð³Ð¾Ð²ÑÐ¹ ÑÐµÐºÑÑÐ¾Ð²ÑÐ¹ Ð¾ÑÐ²ÐµÑ "
-            "Ð¿Ð¾ ÑÐ¶Ðµ Ð²ÑÐ¿Ð¾Ð»Ð½ÐµÐ½Ð½Ð¾Ð¹ ÑÐ°Ð±Ð¾ÑÐµ."
-        ),
-        tools=[],
-    )
-
-    return final_response
+    return response
 
 
 # ---------------- MCP BRIDGE ----------------
 
 mcp = FastMCP(
     "AtlasCore",
+    host="0.0.0.0",
     stateless_http=True,
     json_response=True,
     streamable_http_path="/",
@@ -886,4 +876,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
