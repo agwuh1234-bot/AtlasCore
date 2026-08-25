@@ -7,24 +7,50 @@ from typing import Any
 
 MEMORY_POLICY = """
 Память Atlas:
-- Сохраняй через memory_remember только устойчивые факты: решения, цели, ограничения,
-  предпочтения, структуру проекта и незавершённые важные задачи.
+- Сохраняй через memory_remember устойчивые решения, цели, ограничения, предпочтения,
+  структуру проекта, важные незавершённые задачи, навыки и подтверждённые уроки.
 - Если пользователь явно говорит «изучи», «выучи», «это тебе скилл» или просит
   научиться по вложенному документу, после анализа выдели короткие переиспользуемые
   принципы и сохрани их через memory_remember с kind=skill. Перед сохранением
   используй memory_search, чтобы не плодить дубликаты. Не сохраняй файл целиком.
+- После успешно завершённой сложной задачи сохрани только действительно полезный
+  переиспользуемый способ как kind=skill. После подтверждённой ошибки сохрани краткий
+  урок как kind=lesson, если он поможет не повторить ошибку.
+- Не выдавай предположение модели за подтверждённый урок. Сначала проверь результат.
 - Для изученного документа сохраняй знания в памяти текущего проекта, а не в General,
   если пользователь явно не попросил сделать их глобальными.
 - Не сохраняй пароли, API-ключи, токены, платёжные данные и одноразовые коды.
 - Перед ответом используй долговременную память и недавнюю историю проекта.
 - Глобальные предпочтения из проекта General применяй во всех проектах, но
   специфические решения и задачи не смешивай между проектами.
-- Если новая информация противоречит старой, уточни или сохрани новое решение,
-  не выдавая устаревшее за актуальное.
-- Чтение, поиск, диагностику и безопасные черновики выполняй автоматически.
+- Если новая информация противоречит старой, предпочитай подтверждённое новое решение
+  и не выдавай устаревшее за актуальное.
+- Чтение, поиск, диагностику, тесты и безопасные черновики выполняй автоматически.
 - Изменение кода или данных допускается только при разовом разрешении на запись.
 - Удаление, публикация, платежи, необратимые и дорогие действия требуют отдельного
   явного подтверждения в тексте команды даже при включённом разрешении на запись.
+""".strip()
+
+
+AGENT_LOOP_POLICY = """
+Режим автономного выполнения Atlas:
+1. Преобразуй цель пользователя в короткий внутренний план с проверяемым результатом.
+2. Выполняй все доступные безопасные шаги самостоятельно, не останавливаясь после
+   каждого шага ради отчёта или разрешения, которое не требуется.
+3. После существенного шага проверь фактический результат инструментом, тестом,
+   повторным чтением или диагностикой. Не считай действие успешным только потому,
+   что запрос был отправлен.
+4. Если проверка не прошла, определи причину, выбери безопасное исправление и повтори.
+   Не зацикливайся: после нескольких разных разумных попыток остановись и объясни блокер.
+5. Обращайся к пользователю только когда нужен отсутствующий секрет/аккаунт,
+   обязательное подтверждение записи/опасного действия, выбор с существенными
+   последствиями или физическое действие, которое Atlas выполнить не может.
+6. Для разработки: изучить нужный код -> минимальное изменение -> тесты -> smoke/health
+   -> только затем считать задачу завершённой. Перед рискованным изменением сохранять
+   или использовать проверенную точку восстановления.
+7. Не расширяй разрешение пользователя: разрешение на одну запись не является
+   постоянным разрешением на будущие изменения и не разрешает dangerous-действия.
+8. В финале сообщай результат, проверку, оставшиеся блокеры и способ отката, если был write.
 """.strip()
 
 
@@ -86,6 +112,8 @@ def memory_candidates(text: str) -> list[tuple[str, str]]:
         ("goal", ("моя цель", "наша цель", "хочу добиться", "главная цель")),
         ("constraint", ("важно:", "ограничение:", "обязательно", "необходимо учитывать")),
         ("project", ("мой проект", "наш проект", "структура проекта")),
+        ("lesson", ("ошибка была", "причина ошибки", "больше не повторять", "урок:")),
+        ("skill", ("рабочий способ", "проверенный способ", "скилл:", "навык:")),
     )
     result: list[tuple[str, str]] = []
     for kind, markers in rules:
@@ -101,116 +129,27 @@ def plugin_registry() -> list[dict[str, Any]]:
         and os.environ.get("SHOPIFY_ADMIN_ACCESS_TOKEN")
     )
     return [
-        {
-            "id": "memory",
-            "name": "Долговременная память",
-            "description": "Проекты, решения, предпочтения и история в PostgreSQL.",
-            "status": "connected",
-            "permission": "read-write",
-            "requires_confirmation": False,
-        },
-        {
-            "id": "files",
-            "name": "Файловый центр",
-            "description": "PDF, фото и таблицы сохраняются отдельно для каждого проекта.",
-            "status": "connected",
-            "permission": "confirm-writes",
-            "requires_confirmation": True,
-        },
-        {
-            "id": "automations",
-            "name": "Автоматизации",
-            "description": "Безопасные задачи по расписанию с хранением в PostgreSQL.",
-            "status": "connected",
-            "permission": "read-only",
-            "requires_confirmation": False,
-        },
-        {
-            "id": "push",
-            "name": "Web Push",
-            "description": "Фоновые уведомления о завершении задач для установленного PWA.",
-            "status": "available",
-            "permission": "confirm-writes",
-            "requires_confirmation": True,
-        },
-        {
-            "id": "shopify",
-            "name": "Shopify Brain",
-            "description": (
-                "Встроенный Shopify playbook активен."
-                if not shopify_connected
-                else "Shopify playbook и Admin API подключены."
-            ),
-            "status": "connected" if shopify_connected else "knowledge-ready",
-            "permission": "confirm-writes",
-            "requires_confirmation": True,
-        },
-        {
-            "id": "github",
-            "name": "GitHub",
-            "description": "Чтение репозитория автоматически, запись только с разрешением.",
-            "status": "connected" if bool(os.environ.get("GITHUB_TOKEN")) else "disconnected",
-            "permission": "confirm-writes",
-            "requires_confirmation": True,
-        },
-        {
-            "id": "web",
-            "name": "Web Search",
-            "description": "Свежая информация включается Model Router автоматически.",
-            "status": "available",
-            "permission": "read-only",
-            "requires_confirmation": False,
-        },
-        {
-            "id": "claude",
-            "name": "Claude Review",
-            "description": "Независимая проверка сложных решений с дневным лимитом.",
-            "status": "connected" if bool(os.environ.get("ANTHROPIC_API_KEY")) else "disconnected",
-            "permission": "budgeted",
-            "requires_confirmation": False,
-        },
+        {"id":"memory","name":"Долговременная память","description":"Проекты, решения, предпочтения, навыки и уроки в PostgreSQL.","status":"connected","permission":"read-write","requires_confirmation":False},
+        {"id":"files","name":"Файловый центр","description":"PDF, фото и таблицы сохраняются отдельно для каждого проекта.","status":"connected","permission":"confirm-writes","requires_confirmation":True},
+        {"id":"automations","name":"Автоматизации","description":"Безопасные задачи по расписанию с хранением в PostgreSQL.","status":"connected","permission":"read-only","requires_confirmation":False},
+        {"id":"push","name":"Web Push","description":"Фоновые уведомления о завершении задач для установленного PWA.","status":"available","permission":"confirm-writes","requires_confirmation":True},
+        {"id":"shopify","name":"Shopify Brain","description":"Встроенный Shopify playbook активен." if not shopify_connected else "Shopify playbook и Admin API подключены.","status":"connected" if shopify_connected else "knowledge-ready","permission":"confirm-writes","requires_confirmation":True},
+        {"id":"github","name":"GitHub","description":"Чтение репозитория автоматически, запись только с разрешением.","status":"connected" if bool(os.environ.get("GITHUB_TOKEN")) else "disconnected","permission":"confirm-writes","requires_confirmation":True},
+        {"id":"web","name":"Web Search","description":"Свежая информация включается Model Router автоматически.","status":"available","permission":"read-only","requires_confirmation":False},
+        {"id":"claude","name":"Claude Review","description":"Независимая проверка сложных решений с дневным лимитом.","status":"connected" if bool(os.environ.get("ANTHROPIC_API_KEY")) else "disconnected","permission":"budgeted","requires_confirmation":False},
     ]
 
 
 PERMISSION_LEVELS = [
-    {
-        "id": "read",
-        "name": "Чтение",
-        "description": "Поиск, диагностика и чтение данных выполняются автоматически.",
-        "automatic": True,
-        "confirmation": False,
-    },
-    {
-        "id": "safe",
-        "name": "Безопасные действия",
-        "description": "Анализ, черновики, память и проверки без публикации выполняются автоматически.",
-        "automatic": True,
-        "confirmation": False,
-    },
-    {
-        "id": "write",
-        "name": "Изменение данных",
-        "description": "Код, товары, цены, файлы и настройки требуют разового разрешения ✎.",
-        "automatic": False,
-        "confirmation": True,
-    },
-    {
-        "id": "dangerous",
-        "name": "Опасные и дорогие действия",
-        "description": "Удаление, публикация, платежи и дорогие операции всегда требуют явного подтверждения.",
-        "automatic": False,
-        "confirmation": True,
-    },
+    {"id":"read","name":"Чтение","description":"Поиск, диагностика и чтение данных выполняются автоматически.","automatic":True,"confirmation":False},
+    {"id":"safe","name":"Безопасные действия","description":"Анализ, тесты, черновики, память и проверки без публикации выполняются автоматически.","automatic":True,"confirmation":False},
+    {"id":"write","name":"Изменение данных","description":"Код, товары, цены, файлы и настройки требуют разового разрешения ✎.","automatic":False,"confirmation":True},
+    {"id":"dangerous","name":"Опасные и дорогие действия","description":"Удаление, публикация, платежи и дорогие операции всегда требуют явного подтверждения.","automatic":False,"confirmation":True},
 ]
 
 
 def system_registry(storage_backend: str) -> list[dict[str, Any]]:
-    """Return non-secret capability diagnostics for the mobile control center."""
-    railway_connected = bool(
-        os.environ.get("RAILWAY_ENVIRONMENT_ID")
-        or os.environ.get("RAILWAY_PROJECT_ID")
-        or os.environ.get("RAILWAY_SERVICE_ID")
-    )
+    railway_connected = bool(os.environ.get("RAILWAY_ENVIRONMENT_ID") or os.environ.get("RAILWAY_PROJECT_ID") or os.environ.get("RAILWAY_SERVICE_ID"))
     checks = [
         ("openai", "OpenAI", bool(os.environ.get("OPENAI_API_KEY")), "Основной интеллект и Model Router"),
         ("github", "GitHub", bool(os.environ.get("GITHUB_TOKEN")), "Репозиторий AtlasCore"),
@@ -218,26 +157,7 @@ def system_registry(storage_backend: str) -> list[dict[str, Any]]:
         ("web", "Web", True, "Свежая публичная информация через Model Router"),
         ("railway", "Railway", railway_connected, "Production-среда AtlasCore"),
         ("claude", "Claude", bool(os.environ.get("ANTHROPIC_API_KEY")), "Независимая проверка сложных решений"),
-        (
-            "shopify",
-            "Shopify",
-            bool(os.environ.get("SHOPIFY_STORE_DOMAIN") and os.environ.get("SHOPIFY_ADMIN_ACCESS_TOKEN")),
-            "Admin API; Shopify Brain работает и без подключения",
-        ),
-        (
-            "make",
-            "Make",
-            bool(os.environ.get("MAKE_API_KEY") or os.environ.get("MAKE_WEBHOOK_URL")),
-            "Сценарии автоматизации",
-        ),
+        ("shopify", "Shopify", bool(os.environ.get("SHOPIFY_STORE_DOMAIN") and os.environ.get("SHOPIFY_ADMIN_ACCESS_TOKEN")), "Admin API; Shopify Brain работает и без подключения"),
+        ("make", "Make", bool(os.environ.get("MAKE_API_KEY") or os.environ.get("MAKE_WEBHOOK_URL")), "Сценарии автоматизации"),
     ]
-    return [
-        {
-            "id": item_id,
-            "name": name,
-            "status": "healthy" if connected else "not-configured",
-            "connected": connected,
-            "detail": detail,
-        }
-        for item_id, name, connected, detail in checks
-    ]
+    return [{"id": item_id,"name": name,"status": "healthy" if connected else "not-configured","connected": connected,"detail": detail} for item_id, name, connected, detail in checks]
