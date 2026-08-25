@@ -1027,7 +1027,7 @@ async def app_login(body: AppLoginRequest, response: Response):
         httponly=True,
         secure=True,
         samesite="strict",
-        max_age=31536000,
+        max_age=APP_SESSION_MAX_AGE,
         path="/",
     )
     return {"ok": True}
