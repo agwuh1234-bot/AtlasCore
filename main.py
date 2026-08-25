@@ -25,6 +25,7 @@ from openai import OpenAI, RateLimitError
 
 from atlas_router import BudgetController, ModelRouter, response_usage, response_web_calls
 from atlas_store import AtlasStore, AtlasStoreError, BudgetExceeded, TooManyJobs
+from atlas_push import PushService
 from atlas_knowledge import (
     MEMORY_POLICY,
     SHOPIFY_PLAYBOOK,
@@ -94,6 +95,7 @@ MAX_APP_BODY_BYTES = 32 * 1024 * 1024
 MODEL_ROUTER = ModelRouter()
 MODEL = MODEL_ROUTER.fast_model
 STORE = AtlasStore(max_active_jobs=APP_JOB_MAX_ACTIVE)
+PUSH = PushService(STORE)
 BUDGET = BudgetController(STORE, openai_client)
 APP_JOB_TASKS = {}
 APP_JOB_WORKER = None
@@ -1061,6 +1063,7 @@ async def api_lifespan(app: FastAPI):
     global APP_JOB_WORKER, APP_SHUTTING_DOWN
     ensure_store()
     await asyncio.to_thread(seed_project_knowledge, STORE)
+    await asyncio.to_thread(PUSH.ensure_config)
     APP_SHUTTING_DOWN = False
     STORE.recover_stale_jobs(stale_after=90)
     APP_JOB_WORKER = asyncio.create_task(_app_job_worker())
@@ -1122,6 +1125,20 @@ class TaskRequest(BaseModel):
     claude_review: bool = False
     project_id: str = "project-general"
     attachments: list[AppAttachment] = Field(default_factory=list)
+
+
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionRequest(BaseModel):
+    endpoint: str
+    keys: PushKeys
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
 
 
 class ProjectCreateRequest(BaseModel):
@@ -1263,6 +1280,11 @@ async def _run_app_job(job):
                 STORE.update_project_response,
                 body.project_id,
                 response.id,
+            )
+            await asyncio.to_thread(
+                PUSH.send_completion,
+                job_id=job_id,
+                project_id=body.project_id,
             )
     except asyncio.CancelledError:
         if not APP_SHUTTING_DOWN and not STORE.is_cancel_requested(job_id):
@@ -1682,6 +1704,57 @@ async def api_plugins(
 ):
     verify_app_request(request, x_atlas_key)
     return {"ok": True, "plugins": plugin_registry()}
+
+
+@api.get("/app-push/config")
+async def api_push_config(
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    return {"ok": True, **await asyncio.to_thread(PUSH.public_status)}
+
+
+@api.post("/app-push/subscribe")
+async def api_push_subscribe(
+    body: PushSubscriptionRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    subscription = await asyncio.to_thread(
+        PUSH.subscribe,
+        body.model_dump(mode="json"),
+        request.headers.get("user-agent", ""),
+    )
+    return {"ok": True, "subscription": subscription}
+
+
+@api.delete("/app-push/subscribe")
+async def api_push_unsubscribe(
+    body: PushUnsubscribeRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    deleted = await asyncio.to_thread(PUSH.unsubscribe, body.endpoint)
+    return {"ok": True, "deleted": deleted}
+
+
+@api.post("/app-push/test")
+async def api_push_test(
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    result = await asyncio.to_thread(
+        PUSH.send_completion,
+        job_id="test-" + uuid.uuid4().hex[:12],
+        project_id="project-general",
+        title="Atlas",
+        body="Уведомления работают",
+    )
+    return {"ok": True, **result}
 
 
 @api.get("/app-system-status")
