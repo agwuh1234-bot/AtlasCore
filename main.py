@@ -513,6 +513,9 @@ async def execute_tool(name, arguments):
             arguments["commit_message"],
         )
 
+    if name == "claude_ask":
+        return await claude_ask(arguments["prompt"])
+
     return json.dumps(
         {
             "ok": False,
