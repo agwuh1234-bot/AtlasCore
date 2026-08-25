@@ -128,6 +128,27 @@ class AtlasStore:
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS atlas_secrets (
+                name TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL,
+                updated_at DOUBLE PRECISION NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS atlas_push_subscriptions (
+                id TEXT PRIMARY KEY,
+                endpoint TEXT NOT NULL UNIQUE,
+                p256dh TEXT NOT NULL,
+                auth TEXT NOT NULL,
+                user_agent TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_error TEXT,
+                created_at DOUBLE PRECISION NOT NULL,
+                updated_at DOUBLE PRECISION NOT NULL
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS atlas_usage (
                 id TEXT PRIMARY KEY,
                 day TEXT NOT NULL,
@@ -170,6 +191,7 @@ class AtlasStore:
             "CREATE INDEX IF NOT EXISTS atlas_jobs_project_idx ON atlas_jobs(project_id, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_memories_project_idx ON atlas_memories(project_id, updated_at)",
             "CREATE INDEX IF NOT EXISTS atlas_files_project_idx ON atlas_files(project_id, updated_at)",
+            "CREATE INDEX IF NOT EXISTS atlas_push_enabled_idx ON atlas_push_subscriptions(enabled, updated_at)",
             "CREATE INDEX IF NOT EXISTS atlas_usage_day_idx ON atlas_usage(day, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_actions_project_idx ON atlas_actions(project_id, created_at)",
         ]
@@ -428,6 +450,111 @@ class AtlasStore:
                 (memory_id, project_id),
             )
         return cursor.rowcount == 1
+
+    def get_or_create_secret(self, name: str, value: str) -> str:
+        clean_name = re.sub(r"[^a-z0-9_.-]", "-", (name or "").lower())[:100]
+        if not clean_name or not value:
+            raise AtlasStoreError("Secret name and value are required")
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            self._execute(
+                conn,
+                """
+                INSERT INTO atlas_secrets(name, value, created_at, updated_at)
+                VALUES(?, ?, ?, ?)
+                ON CONFLICT(name) DO NOTHING
+                """,
+                (clean_name, value, now, now),
+            )
+            row = self._execute(
+                conn, "SELECT value FROM atlas_secrets WHERE name = ?", (clean_name,)
+            ).fetchone()
+        return str(dict(row)["value"])
+
+    def upsert_push_subscription(
+        self,
+        *,
+        endpoint: str,
+        p256dh: str,
+        auth: str,
+        user_agent: str = "",
+    ) -> dict[str, Any]:
+        endpoint = (endpoint or "").strip()[:4000]
+        p256dh = (p256dh or "").strip()[:1000]
+        auth = (auth or "").strip()[:1000]
+        if not endpoint.startswith("https://") or not p256dh or not auth:
+            raise AtlasStoreError("Invalid push subscription")
+        subscription_id = "push-" + hashlib.sha256(endpoint.encode("utf-8")).hexdigest()[:24]
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            self._execute(
+                conn,
+                """
+                INSERT INTO atlas_push_subscriptions(
+                    id, endpoint, p256dh, auth, user_agent, enabled,
+                    last_error, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, 1, NULL, ?, ?)
+                ON CONFLICT(endpoint) DO UPDATE SET
+                    p256dh = excluded.p256dh,
+                    auth = excluded.auth,
+                    user_agent = excluded.user_agent,
+                    enabled = 1,
+                    last_error = NULL,
+                    updated_at = excluded.updated_at
+                """,
+                (subscription_id, endpoint, p256dh, auth, (user_agent or "")[:500], now, now),
+            )
+            row = self._execute(
+                conn,
+                """
+                SELECT id, enabled, created_at, updated_at
+                FROM atlas_push_subscriptions WHERE endpoint = ?
+                """,
+                (endpoint,),
+            ).fetchone()
+        return self._dict(row) or {}
+
+    def list_push_subscriptions(self) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = self._execute(
+                conn,
+                """
+                SELECT id, endpoint, p256dh, auth, user_agent, created_at, updated_at
+                FROM atlas_push_subscriptions
+                WHERE enabled = 1
+                ORDER BY updated_at DESC
+                """,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def disable_push_subscription(self, subscription_id: str, error: str = "") -> bool:
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                """
+                UPDATE atlas_push_subscriptions
+                SET enabled = 0, last_error = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                ((error or "")[:1000], time.time(), (subscription_id or "")[:100]),
+            )
+        return cursor.rowcount == 1
+
+    def delete_push_subscription(self, endpoint: str) -> bool:
+        endpoint = (endpoint or "").strip()[:4000]
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn, "DELETE FROM atlas_push_subscriptions WHERE endpoint = ?", (endpoint,)
+            )
+        return cursor.rowcount == 1
+
+    def push_subscription_count(self) -> int:
+        with self._connection() as conn:
+            row = self._execute(
+                conn,
+                "SELECT COUNT(*) AS total FROM atlas_push_subscriptions WHERE enabled = 1",
+            ).fetchone()
+        return int(dict(row)["total"] or 0)
 
     @staticmethod
     def _attachment_size(data: str) -> int:
