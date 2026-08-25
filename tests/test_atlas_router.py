@@ -27,9 +27,11 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(route.lane, "strong")
 
     def test_attachment_uses_document_lane(self):
-        route = ModelRouter().select("Проанализируй вложение", has_attachments=True)
+        router = ModelRouter()
+        route = router.select("Проанализируй вложение", has_attachments=True)
         self.assertEqual(route.lane, "document")
-        self.assertEqual(route.model, ModelRouter().document_model)
+        self.assertEqual(route.model, router.document_model)
+        self.assertEqual(router.public_config()["document"], router.document_model)
 
     def test_attachment_code_request_still_uses_strong_lane(self):
         route = ModelRouter().select(
