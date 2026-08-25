@@ -779,6 +779,18 @@ api = FastAPI(
 
 @api.middleware('http')
 async def add_security_headers(request: Request, call_next):
+    if request.url.path in {'/app-jobs', '/app-task'}:
+        raw_length = request.headers.get('content-length')
+        try:
+            content_length = int(raw_length or '0')
+        except ValueError:
+            content_length = 0
+        if content_length > MAX_APP_BODY_BYTES:
+            return Response(
+                content='{"detail":"Payload too large"}',
+                status_code=413,
+                media_type='application/json',
+            )
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
