@@ -523,14 +523,6 @@ async def run_atlas(text, previous_response_id=None):
 
 # ---------------- MCP BRIDGE ----------------
 
-mcp = FastMCP(
-    "AtlasCore",
-    stateless_http=True,
-    json_response=True,
-    streamable_http_path="/mcp",
-)
-
-
 @mcp.tool()
 async def atlas_task(task: str) -> str:
     """Run a task through Atlas Core."""
