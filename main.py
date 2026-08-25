@@ -698,6 +698,7 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
         **request,
     )
 
+    claude_used = False
     for loop_index in range(MAX_TOOL_LOOPS):
         tool_calls = [
             item
@@ -709,7 +710,6 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
             return response
 
         outputs = []
-        claude_used = False
 
         for call in tool_calls:
             try:
