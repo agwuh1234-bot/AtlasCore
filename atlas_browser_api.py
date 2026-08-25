@@ -12,6 +12,8 @@ from atlas_browser_jobs import BrowserJobManager
 class BrowserJobRequest(BaseModel):
     start_url: str = Field(min_length=8, max_length=2048)
     actions: list[dict[str, Any]] = Field(default_factory=list, max_length=40)
+    session_name: str | None = Field(default=None, min_length=1, max_length=80)
+    save_session: bool = False
 
 
 def build_browser_router(*, bridge_key: str, manager: BrowserJobManager | None = None) -> APIRouter:
@@ -30,13 +32,19 @@ def build_browser_router(*, bridge_key: str, manager: BrowserJobManager | None =
             "mode": "background_jobs",
             "actions": sorted(jobs.executor.ALLOWED_ACTIONS),
             "max_actions": jobs.executor.max_actions,
+            "persistent_sessions": jobs.executor.session_store is not None,
         }
 
     @router.post("/jobs", status_code=202)
     async def submit(body: BrowserJobRequest, x_atlas_bridge_key: str | None = Header(default=None, alias="X-Atlas-Bridge-Key")):
         authorize(x_atlas_bridge_key)
         try:
-            job = await jobs.submit(body.start_url, body.actions)
+            job = await jobs.submit(
+                body.start_url,
+                body.actions,
+                session_name=body.session_name,
+                save_session=body.save_session,
+            )
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
