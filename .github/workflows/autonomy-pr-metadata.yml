@@ -1,0 +1,15 @@
+name: Autonomy PR Metadata
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest tests.test_autonomy_pr_metadata
