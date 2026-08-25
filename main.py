@@ -226,6 +226,23 @@ TOOLS = [
     },
 ]
 
+_TOOL_DESCRIPTIONS = {
+    'github_list_files': 'Показать файлы и папки AtlasCore.',
+    'github_read_file': 'Прочитать диапазон строк текстового файла AtlasCore.',
+    'github_replace_text': 'Точечно заменить один уникальный фрагмент текста в файле и сделать commit.',
+    'github_write_file': 'Создать новый файл или полностью заменить существующий файл и сделать commit.',
+    'claude_ask': 'Получить независимое второе мнение Claude для сложного анализа, архитектуры, отладки или ревью кода.',
+}
+for _tool in TOOLS:
+    if _tool.get('type') == 'function' and _tool.get('name') in _TOOL_DESCRIPTIONS:
+        _tool['description'] = _TOOL_DESCRIPTIONS[_tool['name']]
+        if _tool['name'] == 'github_list_files':
+            _tool['parameters']['properties']['path']['description'] = 'Путь внутри репозитория; пустая строка означает корень.'
+        elif _tool['name'] == 'github_read_file':
+            _tool['parameters']['properties']['path']['description'] = 'Путь внутри репозитория.'
+            _tool['parameters']['properties']['start_line']['description'] = 'Первая строка, начиная с 1.'
+            _tool['parameters']['properties']['end_line']['description'] = 'Последняя строка, максимум 250 строк за вызов.'
+
 
 def github_headers():
     return {
