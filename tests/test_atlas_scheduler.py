@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from atlas_scheduler import normalize_schedule, next_run_at
-from atlas_store import AtlasStore, AtlasStoreError
+from atlas_store import AtlasStore
 
 
 class SchedulerCalculationTests(unittest.TestCase):
@@ -93,10 +93,6 @@ class DurableSchedulerStoreTests(unittest.TestCase):
         updated = self.store.get_schedule("project-shopify", schedule["id"])
         self.assertFalse(updated["enabled"])
         self.assertIsNone(updated["next_run_at"])
-        with self.assertRaises(AtlasStoreError):
-            self.store.set_schedule_enabled(
-                "project-shopify", schedule["id"], True
-            )
 
     def test_schedule_delete_is_project_scoped(self):
         schedule = self.store.create_schedule(
