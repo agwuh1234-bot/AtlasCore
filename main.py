@@ -709,6 +709,11 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
         tool for tool in TOOLS
         if not (tool.get("type") == "function" and tool.get("name") in {"github_replace_text", "github_write_file"})
     ]
+    if not ANTHROPIC_API_KEY:
+        selected_tools = [
+            tool for tool in selected_tools
+            if not (tool.get("type") == "function" and tool.get("name") == "claude_ask")
+        ]
     selected_tools.append({"type": "web_search"})
 
     if attachments:
