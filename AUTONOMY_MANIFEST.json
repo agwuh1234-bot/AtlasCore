@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0-lifecycle-gated",
+  "runtime": ["atlas_autonomy.py", "atlas_autonomy_store.py", "atlas_autonomy_workers.py", "atlas_autonomy_runtime.py"],
+  "integration": ["scripts/patch_main_autonomy.py"],
+  "gates": ["AUTONOMY_ACCEPTANCE.md", "AUTONOMY_ROLLOUT.md", "AUTONOMY_SECURITY.md", "AUTONOMY_RECOVERY.md", "AUTONOMY_ROLLBACK.md"],
+  "canary": "AUTONOMY_CANARY.json"
+}
