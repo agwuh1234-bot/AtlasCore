@@ -721,7 +721,7 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
         response = await asyncio.to_thread(
             create_response,
             model=MODEL,
-            instructions=SYSTEM_PROMPT,
+            instructions=instructions,
             previous_response_id=response.id,
             input=outputs,
             tools=selected_tools,
