@@ -549,6 +549,33 @@ async def claude_ask(prompt):
         logger.exception("Claude API failed")
         return json.dumps({"ok": False, "error": "claude_request_failed"}, ensure_ascii=False)
 
+async def claude_ask(prompt):
+    if not ANTHROPIC_API_KEY:
+        return json.dumps({"ok": False, "error": "claude_not_configured"}, ensure_ascii=False)
+
+    headers = {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    payload = {
+        "model": CLAUDE_MODEL,
+        "max_tokens": 1800,
+        "messages": [{"role": "user", "content": (prompt or "")[:12000]}],
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+        if response.status_code != 200:
+            return json.dumps({"ok": False, "error": "claude_api_error", "status": response.status_code}, ensure_ascii=False)
+        data = response.json()
+        answer = "\n".join(block.get("text", "") for block in data.get("content", []) if block.get("type") == "text").strip()
+        return json.dumps({"ok": True, "model": data.get("model", CLAUDE_MODEL), "answer": answer}, ensure_ascii=False)
+    except Exception:
+        logger.exception("Claude API failed")
+        return json.dumps({"ok": False, "error": "claude_request_failed"}, ensure_ascii=False)
+
 async def execute_tool(name, arguments):
     if name == "github_list_files":
         return await github_list_files(arguments.get("path", ""))
