@@ -386,11 +386,11 @@ class AtlasStore:
         self,
         project_id: str | None,
         query: str,
-        max_chars: int = 6000,
+        max_chars: int = 8000,
     ) -> str:
-        memories = self.search_memories(project_id, query, limit=10)
+        memories = self.search_memories(project_id, query, limit=14)
         if not memories:
-            memories = self.search_memories(project_id, "", limit=6)
+            memories = self.search_memories(project_id, "", limit=10)
         chunks = []
         size = 0
         for memory in memories:
@@ -400,6 +400,19 @@ class AtlasStore:
             chunks.append(line)
             size += len(line)
         return "\n".join(chunks)
+
+    def delete_memory(self, project_id: str | None, memory_id: str) -> bool:
+        project_id = self._project_id(project_id)
+        memory_id = (memory_id or "").strip()[:100]
+        if not memory_id:
+            return False
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                "DELETE FROM atlas_memories WHERE id = ? AND project_id = ?",
+                (memory_id, project_id),
+            )
+        return cursor.rowcount == 1
 
     def create_job(self, payload: dict[str, Any]) -> dict[str, Any]:
         project_id = self._project_id(payload.get("project_id"))

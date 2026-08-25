@@ -1,0 +1,415 @@
+:root {
+  --atlas-height: 100dvh;
+  --atlas-tab-height: 58px;
+  --atlas-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --atlas-surface: #0b1118;
+  --atlas-surface-2: #111923;
+  --atlas-border: rgba(255, 255, 255, .09);
+  --atlas-accent: #8068ff;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
+}
+
+body {
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+button,
+textarea,
+input,
+select {
+  font-size: 16px;
+}
+
+.app-shell,
+.app {
+  display: flex;
+  flex-direction: column;
+  height: var(--atlas-height);
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.topbar {
+  flex: 0 0 auto;
+  min-height: 66px;
+  padding-top: calc(env(safe-area-inset-top) + 9px);
+  padding-bottom: 9px;
+  z-index: 20;
+}
+
+.project-switcher {
+  flex: 0 0 auto;
+  min-height: 48px;
+  z-index: 15;
+}
+
+.chat-card {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.chat-list,
+.chat {
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding-bottom: 22px;
+  scrollbar-gutter: stable;
+  width: 100%;
+}
+
+.chat-list > * {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 900px;
+}
+
+.composer-wrap {
+  flex: 0 0 auto;
+  padding-bottom: 8px;
+  position: relative;
+  z-index: 18;
+}
+
+.composer {
+  align-items: flex-end;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 42px 42px minmax(0, 1fr) 46px;
+  position: relative;
+}
+
+.composer textarea {
+  font-size: 16px;
+  line-height: 1.35;
+  max-height: min(140px, 28vh);
+  min-width: 0;
+  width: 100%;
+}
+
+#voiceBtn {
+  grid-column: 2;
+}
+
+#messageInput {
+  grid-column: 3;
+}
+
+#sendBtn,
+#stopBtn {
+  grid-column: 4;
+}
+
+#stopBtn:not(.hidden) + #sendBtn {
+  display: none;
+}
+
+.composer-tools {
+  align-items: center;
+  background: rgba(12, 18, 25, .98);
+  border: 1px solid var(--atlas-border);
+  border-radius: 16px;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, .42);
+  display: flex;
+  gap: 8px;
+  left: 0;
+  padding: 8px;
+  position: absolute;
+  transform: translateY(8px) scale(.98);
+  transform-origin: bottom left;
+  transition: opacity .16s ease, transform .16s ease, visibility .16s;
+  visibility: hidden;
+  opacity: 0;
+}
+
+.composer-tools.open {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+}
+
+.composer-tools .icon-btn {
+  background: var(--atlas-surface-2);
+}
+
+#toolTrayBtn {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.workspace-panels {
+  display: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-panel {
+  -webkit-overflow-scrolling: touch;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 14px 14px 28px;
+}
+
+.workspace-panel-inner {
+  margin: 0 auto;
+  max-width: 760px;
+}
+
+.workspace-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 4px 0 16px;
+}
+
+.workspace-heading h2 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.workspace-heading p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.atlas-card {
+  background: linear-gradient(145deg, rgba(17, 25, 35, .96), rgba(10, 15, 22, .98));
+  border: 1px solid var(--atlas-border);
+  border-radius: 18px;
+  margin-bottom: 10px;
+  padding: 14px;
+}
+
+.atlas-card-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.atlas-card h3 {
+  font-size: 15px;
+  margin: 0 0 5px;
+}
+
+.atlas-card p,
+.atlas-card small {
+  color: var(--muted);
+  line-height: 1.42;
+  margin: 0;
+}
+
+.atlas-card button,
+.panel-action {
+  background: var(--atlas-accent);
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0 13px;
+}
+
+.panel-action.secondary {
+  background: var(--atlas-surface-2);
+  border: 1px solid var(--atlas-border);
+}
+
+.panel-input {
+  background: #080d13;
+  border: 1px solid var(--atlas-border);
+  border-radius: 14px;
+  color: #fff;
+  min-height: 46px;
+  outline: none;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.panel-form {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.plugin-icon {
+  background: rgba(128, 104, 255, .14);
+  border: 1px solid rgba(128, 104, 255, .3);
+  border-radius: 13px;
+  display: grid;
+  flex: 0 0 42px;
+  height: 42px;
+  place-items: center;
+  width: 42px;
+}
+
+.status-pill {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.status-pill.connected,
+.status-pill.available,
+.status-pill.knowledge-ready {
+  background: rgba(53, 214, 160, .12);
+  color: #5de2b2;
+}
+
+.status-pill.disconnected {
+  background: rgba(255, 255, 255, .07);
+  color: var(--muted);
+}
+
+.bottom-tabs {
+  background: rgba(5, 8, 12, .96);
+  border-top: 1px solid var(--atlas-border);
+  display: grid;
+  flex: 0 0 calc(var(--atlas-tab-height) + var(--atlas-safe-bottom));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 4px 6px var(--atlas-safe-bottom);
+  z-index: 25;
+}
+
+.bottom-tabs.hidden,
+.keyboard-open .bottom-tabs {
+  display: none;
+}
+
+.tab-button {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: #7f8b9b;
+  display: flex;
+  flex-direction: column;
+  font-size: 10px;
+  gap: 2px;
+  justify-content: center;
+  min-width: 0;
+  padding: 3px 2px;
+}
+
+.tab-button .tab-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.tab-button.active {
+  background: rgba(128, 104, 255, .1);
+  color: #a99cff;
+}
+
+.app-shell:not([data-active-tab="chat"]) .chat-card,
+.app-shell:not([data-active-tab="chat"]) .composer-wrap,
+.app-shell:not([data-active-tab="chat"]) .project-switcher {
+  display: none !important;
+}
+
+.app-shell:not([data-active-tab="chat"]) .workspace-panels {
+  display: block;
+}
+
+.empty-state {
+  color: var(--muted);
+  padding: 34px 18px;
+  text-align: center;
+}
+
+.memory-kind {
+  color: #a99cff;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.action-meta {
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+@media (max-width: 430px) {
+  .topbar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #installBtn {
+    display: none;
+  }
+
+  #newChatBtn {
+    font-size: 0;
+    padding: 0;
+    width: 38px;
+  }
+
+  #newChatBtn::before {
+    content: "＋";
+    font-size: 22px;
+  }
+
+  .brand {
+    font-size: 17px;
+  }
+
+  .bubble {
+    max-width: 88%;
+  }
+
+  .chat-list,
+  .chat {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .composer-wrap {
+    padding-left: 9px;
+    padding-right: 9px;
+  }
+}
+
+@media (min-width: 760px) {
+  .bottom-tabs {
+    border: 1px solid var(--atlas-border);
+    border-radius: 18px 18px 0 0;
+    margin: 0 auto;
+    max-width: 760px;
+    width: 100%;
+  }
+
+  .workspace-panel {
+    padding-top: 24px;
+  }
+}
