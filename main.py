@@ -1102,6 +1102,7 @@ async def api_app_task(
     ),
 ):
     verify_app_request(request, x_atlas_key)
+    validate_app_task_request(body)
 
     try:
         response = await run_atlas(
