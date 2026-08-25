@@ -24,6 +24,7 @@
       <div class="topbar-actions">
         <button id="installBtn" class="ghost-btn" type="button">Установить</button>
         <button id="newChatBtn" class="ghost-btn" type="button">Новый чат</button>
+        <button id="settingsBtn" class="ghost-btn" type="button">⚙</button>
       </div>
     </header>
 
@@ -46,13 +47,27 @@
       </div>
     </div>
 
+    <div id="settingsCard" class="modal-bg hidden">
+      <div class="modal">
+        <h2>Настройки</h2>
+        <button id="notificationBtn" type="button">Включить уведомления</button>
+        <button id="logoutBtn" type="button">Выйти</button>
+        <button id="closeSettingsBtn" type="button">Закрыть</button>
+        <p>Кнопка ✎ разрешает изменения только для следующей команды.</p>
+      </div>
+    </div>
+
     <section id="chatCard" class="chat-card hidden">
       <div id="chatList" class="chat-list" aria-live="polite"></div>
     </section>
 
     <footer id="composerWrap" class="composer-wrap hidden">
+      <div id="attachmentBar" class="attachment-bar hidden"></div>
       <form id="composer" class="composer">
+        <button id="attachBtn" type="button" class="icon-btn" aria-label="Добавить файл">＋</button>
+        <input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" hidden>
         <button id="voiceBtn" type="button" class="icon-btn" aria-label="Voice input">🎤</button>
+        <button id="writeModeBtn" type="button" class="icon-btn" aria-label="Разрешить изменения" title="Разрешить изменения для следующей команды">✎</button>
         <textarea id="messageInput" rows="1" placeholder="Напиши Atlas…"></textarea>
         <button id="sendBtn" class="send" type="submit">→</button>
       </form>
