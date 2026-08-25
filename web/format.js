@@ -5,7 +5,7 @@ var LINK_CLASS='prose-link';
 var TYPING_SELECTOR='.row.assistant.typing, .row.assistant.is-typing, .row.assistant[data-typing="1"]';
 var CHAT_SELECTOR='#chatList';
 var URL_RE=/(https?:\/\/[^\s<>'"()\[\]{}]+)/g;
-function isTypingBubble(el){return !!(el&&el.closest&&el.closest(TYPING_SELECTOR));}
+function isTypingBubble(el){return !!(el&&el.closest&&(el.classList&&el.classList.contains('typing')||el.id==='typingDots'||el.closest('#typingDots')||el.closest(TYPING_SELECTOR)));}
 function isBubble(el){return !!(el&&el.matches&&el.matches('.row.assistant .bubble')&&!isTypingBubble(el));}
 function hasFormatted(el){return el&&el.getAttribute(FORMATTED_ATTR)==='1';}
 function markFormatted(el){el.setAttribute(FORMATTED_ATTR,'1');}
