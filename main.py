@@ -746,6 +746,47 @@ async def api_app_task(
         }
 
     except RateLimitError:
+        logger.warning("OpenAI rate limit reached")
+
+        raise HTTPException(
+            status_code=429,
+            detail="OpenAI API rate limit reached.",
+        )
+
+    except Exception:
+        logger.exception("App task failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        )
+
+
+@api.post("/app-task")
+async def api_app_task(
+    body: TaskRequest,
+    x_atlas_key: str | None = Header(
+        default=None,
+        alias="X-Atlas-Key",
+    ),
+):
+    verify_app_key(x_atlas_key)
+
+    try:
+        response = await run_atlas(
+            body.task,
+            body.previous_response_id,
+        )
+
+        answer = (response.output_text or "").strip()
+
+        return {
+            "ok": True,
+            "response_id": response.id,
+            "answer": answer,
+        }
+
+    except RateLimitError:
         raise HTTPException(
             status_code=429,
             detail="OpenAI API rate limit reached.",
