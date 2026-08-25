@@ -19,6 +19,7 @@ def main() -> None:
     main_py = ROOT / "main.py"
     assert main_py.exists(), "main.py must exist"
     main_text = main_py.read_text(encoding="utf-8")
+    ast.parse(main_text, filename='main.py')
     assert len(main_text) > 30000, f"main.py text too short: {len(main_text)} <= 30000"
     for needle in [
         "async def run_atlas",
