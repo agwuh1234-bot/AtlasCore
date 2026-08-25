@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#05070a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ATLAS">
+  <meta name="apple-mobile-web-app-title" content="Atlas">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="format-detection" content="telephone=no">
   <title>ATLAS</title>
@@ -17,19 +17,27 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <button id="settings" class="topbar-btn ghost" type="button" aria-label="Настройки">⚙</button>
       <div class="brand-block">
         <div class="brand">ATLAS</div>
         <div class="status"><span class="dot"></span><span id="statusText">offline</span></div>
       </div>
-      <button id="newChat" class="topbar-btn" type="button" aria-label="Новый чат">＋</button>
+      <div class="topbar-actions">
+        <button id="newChat" class="topbar-btn" type="button" aria-label="Новый чат">Новый чат</button>
+        <button id="settings" class="topbar-btn ghost" type="button" aria-label="Настройки">Настройки</button>
+      </div>
     </header>
 
-    <main id="chat" class="chat" aria-live="polite"></main>
+    <main id="chat" class="chat" aria-live="polite">
+      <section class="welcome-state" aria-label="Приветствие">
+        <h1>Atlas App</h1>
+        <p>Начни новый чат или открой настройки для доступа.</p>
+      </section>
+    </main>
 
     <div class="composer-wrap">
       <form id="composer" class="composer">
-        <textarea id="message" rows="1" placeholder="Напиши Atlas…" autocomplete="off" autocapitalize="sentences" spellcheck="true"></textarea>
+        <button id="voiceBtn" class="voice-btn" type="button" aria-label="Микрофон">🎤</button>
+        <textarea id="message" rows="1" placeholder="Напиши сообщение…" autocomplete="off" autocapitalize="sentences" spellcheck="true"></textarea>
         <button id="send" class="send" type="submit" aria-label="Отправить">↑</button>
       </form>
     </div>
@@ -37,9 +45,9 @@
 
   <div id="keyModal" class="modal-bg" style="display:none" aria-hidden="true">
     <div class="modal">
-      <h2>Настройки</h2>
-      <p>Ключ хранится только на этом устройстве.</p>
-      <input id="keyInput" type="password" autocomplete="off" inputmode="text" placeholder="Atlas access key" />
+      <h2>Ключ доступа</h2>
+      <p>Введите ключ, чтобы продолжить.</p>
+      <input id="keyInput" type="password" autocomplete="off" inputmode="text" placeholder="Access key" />
       <div class="modal-actions">
         <button id="saveKey" type="button">Сохранить</button>
       </div>
