@@ -24,7 +24,13 @@
       </div>
     </header>
 
-    <main id="chat" class="chat" aria-live="polite"></main>
+    <main id="chat" class="chat" aria-live="polite">
+      <section id="emptyState" class="empty">
+        <div class="empty-logo">A</div>
+        <h1>Atlas ready</h1>
+        <p>Напиши сообщение, чтобы начать новый диалог.</p>
+      </section>
+    </main>
 
     <div class="composer-wrap">
       <form id="composer" class="composer">
@@ -34,12 +40,15 @@
     </div>
   </div>
 
-  <div id="keyModal" class="modal-bg hidden" aria-hidden="true">
+  <div id="settingsModal" class="modal-bg hidden" aria-hidden="true">
     <div class="modal">
-      <h2>Ключ доступа</h2>
+      <h2>Настройки</h2>
       <p>Ключ хранится только на этом устройстве.</p>
-      <input id="keyInput" type="password" autocomplete="off" inputmode="text" />
-      <button id="saveKey" type="button">Сохранить</button>
+      <input id="keyInput" type="password" autocomplete="off" inputmode="text" placeholder="Atlas access key" />
+      <div class="modal-actions">
+        <button id="saveKey" type="button">Сохранить</button>
+        <button id="closeSettings" type="button" class="secondary">Закрыть</button>
+      </div>
     </div>
   </div>
 
