@@ -27,6 +27,12 @@ class AtlasKnowledgeTests(unittest.TestCase):
         self.assertEqual(memory_candidates("Важно: API key sk-supersecret123456"), [])
         self.assertIn("Не сохраняй пароли", MEMORY_POLICY)
 
+    def test_memory_policy_persists_explicit_document_learning(self):
+        self.assertIn("это тебе скилл", MEMORY_POLICY)
+        self.assertIn("kind=skill", MEMORY_POLICY)
+        self.assertIn("memory_search", MEMORY_POLICY)
+        self.assertIn("Не сохраняй файл целиком", MEMORY_POLICY)
+
     def test_shopify_knowledge_seed_is_idempotent(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = AtlasStore(
