@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,22 +23,25 @@ class BrowserSessionStore:
     Encryption key must come from ATLAS_BROWSER_SESSION_KEY in the runtime secret store.
     """
 
+    _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
+
     def __init__(self, root: str | None = None, key: str | None = None) -> None:
         self.root = Path(root or os.environ.get("ATLAS_BROWSER_SESSION_DIR", "/data/atlas-browser-sessions"))
         self.root.mkdir(parents=True, exist_ok=True)
         raw_key = key or os.environ.get("ATLAS_BROWSER_SESSION_KEY", "")
         if not raw_key:
             raise BrowserSessionError("ATLAS_BROWSER_SESSION_KEY is required")
-        # Accept an arbitrary high-entropy runtime secret and derive a valid Fernet key.
         derived = base64.urlsafe_b64encode(hashlib.sha256(raw_key.encode("utf-8")).digest())
         self.cipher = Fernet(derived)
 
-    @staticmethod
-    def _safe_name(name: str) -> str:
-        cleaned = "".join(c for c in name.lower().strip() if c.isalnum() or c in "-_")
-        if not cleaned or len(cleaned) > 80:
+    @classmethod
+    def _safe_name(cls, name: str) -> str:
+        normalized = name.lower().strip()
+        # Reject rather than silently rewriting input. This prevents two different
+        # caller-provided names (or traversal-like strings) from aliasing one file.
+        if not cls._NAME_RE.fullmatch(normalized):
             raise BrowserSessionError("Invalid session name")
-        return cleaned
+        return normalized
 
     def _path(self, name: str) -> Path:
         return self.root / f"{self._safe_name(name)}.state.enc"
