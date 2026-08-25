@@ -99,4 +99,54 @@ def app_session_token_valid(token):
         return ts_int <= now + 300 and 0 <= now - ts_int <= APP_SESSION_MAX_AGE
     except Exception:
         return False
+import os
+import secrets
+import json
+import hmac
+import hashlib
+import logging
+import asyncio
+import base64
+import threading
+import time
+import uuid
+from contextlib import asynccontextmanager
+
+import httpx
+import uvicorn
+
+from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from mcp.server.fastmcp import FastMCP
+from openai import OpenAI, RateLimitError
+
+from telegram import Update
+from telegram.constants import ChatAction
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+
+for _env_name in ("BOT_TOKEN", "OPENAI_API_KEY", "GITHUB_TOKEN", "ATLAS_API_KEY", "ATLAS_BRIDGE_KEY", "ATLAS_APP_KEY"):
+    if not os.environ.get(_env_name):
+        raise RuntimeError(f"Missing required env: {_env_name}")
+
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+ATLAS_API_KEY = os.environ["ATLAS_API_KEY"]
+ATLAS_BRIDGE_KEY = os.environ["ATLAS_BRIDGE_KEY"]
+ATLAS_APP_KEY = os.environ["ATLAS_APP_KEY"]
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5")
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
+
+REPO = "agwuh1234-bot/AtlasCore"
+MODEL = "gpt-5.4-mini"
 REPLACE_PLACEHOLDER
