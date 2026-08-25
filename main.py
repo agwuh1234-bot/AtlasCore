@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 
 
-for _env_name in ("BOT_TOKEN", "OPENAI_API_KEY", "GITHUB_TOKEN", "ATLAS_API_KEY"):
+for _env_name in ("BOT_TOKEN", "OPENAI_API_KEY", "GITHUB_TOKEN", "ATLAS_API_KEY", "ATLAS_BRIDGE_KEY"):
     if not os.environ.get(_env_name):
         raise RuntimeError(f"Missing required env: {_env_name}")
 
@@ -34,6 +34,7 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 ATLAS_API_KEY = os.environ["ATLAS_API_KEY"]
+ATLAS_BRIDGE_KEY = os.environ["ATLAS_BRIDGE_KEY"]
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 
 REPO = "agwuh1234-bot/AtlasCore"
