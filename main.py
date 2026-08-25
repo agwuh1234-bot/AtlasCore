@@ -1,5 +1,32 @@
 import os
+import secrets
+import json
+import hmac
+import hashlib
+import logging
+import asyncio
+import base64
+import threading
+import time
+import uuid
+from contextlib import asynccontextmanager
 
+import httpx
+import uvicorn
+
+from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from mcp.server.fastmcp import FastMCP
+from openai import OpenAI, RateLimitError
+
+from telegram import Update
+from telegram.constants import ChatAction
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
     ContextTypes,
     filters,
 )
