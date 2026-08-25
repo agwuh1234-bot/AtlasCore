@@ -366,10 +366,45 @@
     const inner = panelInner('plugins');
     if (!inner) return;
     inner.replaceChildren();
-    inner.append(heading('Плагины', 'Подключения, возможности и уровни разрешений.'));
+    const refresh = node('button', 'panel-action secondary', 'Проверить');
+    refresh.type = 'button';
+    refresh.addEventListener('click', loadPlugins);
+    inner.append(heading('Системы и плагины', 'Состояние подключений и реальные уровни разрешений.', refresh));
 
     try {
-      const data = await request('/app-plugins');
+      const [statusData, permissionData, data] = await Promise.all([
+        request('/app-system-status'),
+        request('/app-permissions'),
+        request('/app-plugins'),
+      ]);
+
+      const systemTitle = node('h3', 'panel-section-title', 'Состояние систем');
+      inner.append(systemTitle);
+      const systemGrid = node('div', 'system-grid');
+      for (const system of statusData.systems || []) {
+        const card = node('article', 'system-card');
+        const mark = node('span', 'system-mark ' + String(system.status || 'not-configured'), system.connected ? '✓' : '—');
+        const copy = node('div');
+        copy.append(node('strong', '', String(system.name || system.id)));
+        copy.append(node('small', '', String(system.detail || '')));
+        card.append(mark, copy);
+        systemGrid.append(card);
+      }
+      inner.append(systemGrid);
+
+      inner.append(node('h3', 'panel-section-title', 'Разрешения'));
+      for (const level of permissionData.levels || []) {
+        const card = node('article', 'atlas-card permission-card');
+        const row = node('div', 'atlas-card-row');
+        const copy = node('div');
+        copy.append(node('h3', '', String(level.name || level.id)));
+        copy.append(node('p', '', String(level.description || '')));
+        row.append(copy, node('span', 'status-pill ' + (level.automatic ? 'connected' : 'confirmation'), level.automatic ? 'Авто' : 'Подтверждение'));
+        card.append(row);
+        inner.append(card);
+      }
+
+      inner.append(node('h3', 'panel-section-title', 'Плагины'));
       for (const plugin of data.plugins || []) {
         const card = node('article', 'atlas-card');
         const row = node('div', 'atlas-card-row');
@@ -400,6 +435,8 @@
       available: 'Готов',
       'knowledge-ready': 'Обучен',
       disconnected: 'Не подключён',
+      healthy: 'Работает',
+      'not-configured': 'Не настроен',
     })[status] || String(status || 'Неизвестно');
   }
 
