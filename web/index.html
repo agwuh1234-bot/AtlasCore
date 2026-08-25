@@ -17,14 +17,12 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
+      <button id="settings" class="topbar-btn ghost" type="button" aria-label="Настройки">⚙</button>
       <div class="brand-block">
         <div class="brand">ATLAS</div>
         <div class="status"><span class="dot"></span><span id="statusText">offline</span></div>
       </div>
-      <div class="actions">
-        <button id="settings" class="icon-btn ghost" type="button" aria-label="Настройки">⚙</button>
-        <button id="newChat" class="icon-btn" type="button" aria-label="Новый чат">＋</button>
-      </div>
+      <button id="newChat" class="topbar-btn" type="button" aria-label="Новый чат">＋</button>
     </header>
 
     <main id="chat" class="chat" aria-live="polite"></main>
