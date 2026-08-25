@@ -40,6 +40,7 @@ Date: 2026-08-25 (UTC)
 - FastAPI startup: complete
 - Railway healthcheck: `/health` passed
 - Runtime error scan after startup: no `NameError`, traceback, or background-job errors
+- Manual iPhone runtime command: `ATLAS_OK` confirmed by the user
 - Pre-deploy unit tests are isolated from production PostgreSQL and use a unique temporary SQLite database
 
 ## Pull requests
