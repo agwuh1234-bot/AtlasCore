@@ -709,6 +709,7 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
             return response
 
         outputs = []
+        claude_used = False
 
         for call in tool_calls:
             try:
