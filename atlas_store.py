@@ -114,6 +114,20 @@ class AtlasStore:
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS atlas_files (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                data TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                content_hash TEXT NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL,
+                updated_at DOUBLE PRECISION NOT NULL,
+                UNIQUE(project_id, content_hash)
+            )
+            """,
+            """
             CREATE TABLE IF NOT EXISTS atlas_usage (
                 id TEXT PRIMARY KEY,
                 day TEXT NOT NULL,
@@ -155,6 +169,7 @@ class AtlasStore:
             "CREATE INDEX IF NOT EXISTS atlas_jobs_status_idx ON atlas_jobs(status, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_jobs_project_idx ON atlas_jobs(project_id, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_memories_project_idx ON atlas_memories(project_id, updated_at)",
+            "CREATE INDEX IF NOT EXISTS atlas_files_project_idx ON atlas_files(project_id, updated_at)",
             "CREATE INDEX IF NOT EXISTS atlas_usage_day_idx ON atlas_usage(day, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_actions_project_idx ON atlas_actions(project_id, created_at)",
         ]
@@ -411,6 +426,123 @@ class AtlasStore:
                 conn,
                 "DELETE FROM atlas_memories WHERE id = ? AND project_id = ?",
                 (memory_id, project_id),
+            )
+        return cursor.rowcount == 1
+
+    @staticmethod
+    def _attachment_size(data: str) -> int:
+        payload = (data or "").split(",", 1)[-1]
+        padding = len(payload) - len(payload.rstrip("="))
+        return max(0, (len(payload) * 3) // 4 - padding)
+
+    def save_file(
+        self,
+        project_id: str | None,
+        *,
+        name: str,
+        media_type: str,
+        data: str,
+    ) -> dict[str, Any]:
+        project_id = self._project_id(project_id)
+        self.ensure_project(project_id)
+        clean_name = re.sub(r"[\\x00-\\x1f\\x7f]+", " ", Path(name or "file").name).strip()[:180] or "file"
+        clean_type = (media_type or "application/octet-stream").strip().lower()[:120]
+        clean_data = data or ""
+        if not clean_data:
+            raise AtlasStoreError("File data is required")
+        content_hash = hashlib.sha256(clean_data.encode("utf-8")).hexdigest()
+        file_id = "file-" + hashlib.sha256(
+            f"{project_id}\\0{content_hash}".encode("utf-8")
+        ).hexdigest()[:24]
+        size_bytes = self._attachment_size(clean_data)
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            self._execute(
+                conn,
+                """
+                INSERT INTO atlas_files(
+                    id, project_id, name, media_type, data, size_bytes,
+                    content_hash, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, content_hash) DO UPDATE SET
+                    name = excluded.name,
+                    media_type = excluded.media_type,
+                    updated_at = excluded.updated_at
+                """,
+                (file_id, project_id, clean_name, clean_type, clean_data, size_bytes, content_hash, now, now),
+            )
+            row = self._execute(
+                conn,
+                """
+                SELECT id, project_id, name, media_type, size_bytes, created_at, updated_at
+                FROM atlas_files WHERE id = ? AND project_id = ?
+                """,
+                (file_id, project_id),
+            ).fetchone()
+        return self._dict(row) or {}
+
+    def save_attachments(
+        self, project_id: str | None, attachments: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        saved = []
+        for attachment in attachments[:4]:
+            if not isinstance(attachment, dict):
+                continue
+            saved.append(
+                self.save_file(
+                    project_id,
+                    name=str(attachment.get("name") or "file"),
+                    media_type=str(attachment.get("media_type") or "application/octet-stream"),
+                    data=str(attachment.get("data") or ""),
+                )
+            )
+        return saved
+
+    def list_files(
+        self, project_id: str | None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        project_id = self._project_id(project_id)
+        limit = max(1, min(int(limit), 200))
+        with self._connection() as conn:
+            rows = self._execute(
+                conn,
+                """
+                SELECT id, project_id, name, media_type, size_bytes, created_at, updated_at
+                FROM atlas_files
+                WHERE project_id = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (project_id, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_file(
+        self, project_id: str | None, file_id: str
+    ) -> dict[str, Any] | None:
+        project_id = self._project_id(project_id)
+        file_id = (file_id or "").strip()[:100]
+        with self._connection() as conn:
+            row = self._execute(
+                conn,
+                """
+                SELECT id, project_id, name, media_type, data, size_bytes, created_at, updated_at
+                FROM atlas_files WHERE id = ? AND project_id = ?
+                """,
+                (file_id, project_id),
+            ).fetchone()
+        return self._dict(row)
+
+    def delete_file(self, project_id: str | None, file_id: str) -> bool:
+        project_id = self._project_id(project_id)
+        file_id = (file_id or "").strip()[:100]
+        if not file_id:
+            return False
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                "DELETE FROM atlas_files WHERE id = ? AND project_id = ?",
+                (file_id, project_id),
             )
         return cursor.rowcount == 1
 
