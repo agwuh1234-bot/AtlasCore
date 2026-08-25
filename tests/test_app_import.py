@@ -19,6 +19,7 @@ class AppImportTests(unittest.TestCase):
     def test_fastapi_application_imports(self):
         self.assertEqual(main.api.title, "Atlas API")
         self.assertTrue(callable(main.run_atlas))
+        self.assertIsNotNone(main.re.match(r"^atlas$", "atlas"))
         self.assertEqual(main.STORE.backend, "sqlite-fallback")
 
 
