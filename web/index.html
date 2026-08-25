@@ -11,7 +11,6 @@
   <meta name="format-detection" content="telephone=no">
   <link rel="manifest" href="/app/manifest.json">
   <link rel="icon" href="/app/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/app/icon.svg">
   <link rel="stylesheet" href="/app/styles.css">
   <title>Atlas</title>
 </head>
@@ -22,7 +21,10 @@
         <div class="brand">Atlas</div>
         <div class="presence"><span class="dot"></span><span id="serviceStatus">offline</span></div>
       </div>
-      <button id="newChatBtn" class="ghost-btn" type="button">Новый чат</button>
+      <div class="topbar-actions">
+        <button id="installBtn" class="ghost-btn" type="button">Установить</button>
+        <button id="newChatBtn" class="ghost-btn" type="button">Новый чат</button>
+      </div>
     </header>
 
     <div id="loginCard" class="modal-bg">
@@ -33,6 +35,14 @@
         <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Введите ключ">
         <button id="loginBtn" type="button">Войти</button>
         <div id="loginError" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="installCard" class="modal-bg hidden">
+      <div class="modal">
+        <h2>Установить Atlas</h2>
+        <p>На iPhone: нажмите «Поделиться» → «На экран Домой», оставьте «Открывать как веб-приложение» включённым и нажмите «Добавить».</p>
+        <button id="closeInstallBtn" type="button">Понятно</button>
       </div>
     </div>
 
