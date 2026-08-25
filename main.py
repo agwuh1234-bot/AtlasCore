@@ -1149,7 +1149,7 @@ class ScheduleCreateRequest(BaseModel):
     name: str
     task: str
     frequency: str
-    timezone: str = "Europe/Berlin"
+    timezone: str = "Europe/Kyiv"
     time_local: str = "09:00"
     weekdays: list[int] = Field(default_factory=list)
     run_at: str | None = None
