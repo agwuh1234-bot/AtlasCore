@@ -572,12 +572,12 @@ async def atlas_task(
             "answer": answer,
         }
 
-    except Exception as exc:
+    except Exception:
         logger.exception("MCP Atlas task failed")
 
         return {
             "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": "Internal server error",
         }
 
 
