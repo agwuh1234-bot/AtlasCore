@@ -28,7 +28,7 @@ from telegram.ext import (
 )
 
 
-for _env_name in ("BOT_TOKEN", "OPENAI_API_KEY", "GITHUB_TOKEN", "ATLAS_API_KEY", "ATLAS_BRIDGE_KEY"):
+for _env_name in ("BOT_TOKEN", "OPENAI_API_KEY", "GITHUB_TOKEN", "ATLAS_API_KEY", "ATLAS_BRIDGE_KEY", "ATLAS_APP_KEY"):
     if not os.environ.get(_env_name):
         raise RuntimeError(f"Missing required env: {_env_name}")
 
