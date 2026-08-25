@@ -40,6 +40,8 @@ def main() -> None:
         '@api.get("/app-projects")',
         '@api.get("/app-budget")',
         '@api.get("/app-plugins")',
+        '@api.get("/app-system-status")',
+        '@api.get("/app-permissions")',
         '@api.delete("/app-projects/{project_id}/memory/{memory_id}")',
         "SHOPIFY_PLAYBOOK",
         "MODEL_ROUTER",
@@ -63,12 +65,16 @@ def main() -> None:
     assert ".project-switcher" in projects_css
 
     shell_js = read_text("web/shell.js")
-    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions"]:
+    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions", "/app-system-status", "/app-permissions"]:
         assert needle in shell_js, f"web/shell.js missing required text: {needle}"
 
     shell_css = read_text("web/shell.css")
     for needle in ["position: fixed", ".bottom-tabs", ".workspace-panel", ".composer-tools"]:
         assert needle in shell_css, f"web/shell.css missing required text: {needle}"
+
+    control_center_js = read_text("web/control_center.js")
+    for needle in ["conversationModeBtn", "stopVoiceBtn", "SpeechRecognition", "requestSubmit"]:
+        assert needle in control_center_js, f"web/control_center.js missing required text: {needle}"
 
     recovery_js = read_text("web/recovery.js")
     assert len(recovery_js) > 1000, f"web/recovery.js text too short: {len(recovery_js)} <= 1000"
@@ -77,7 +83,7 @@ def main() -> None:
         assert needle in recovery_js, f"web/recovery.js missing required text: {needle}"
 
     sw_js = read_text("web/sw.js")
-    for needle in ["projects.js", "projects.css", "recovery.js", "app.js", "ux.js", "status.js", "format.js", "shell.js", "shell.css"]:
+    for needle in ["projects.js", "projects.css", "recovery.js", "control_center.js", "app.js", "ux.js", "status.js", "format.js", "shell.js", "shell.css"]:
         assert needle in sw_js, f"web/sw.js missing required asset: {needle}"
 
     format_js = read_text("web/format.js")
