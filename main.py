@@ -887,6 +887,61 @@ def verify_user_access(user_id: int | None):
     return user_id in ALLOWED_USER_IDS
 
 
+def _prune_app_jobs():
+    now = time.time()
+    for job_id, job in list(APP_JOBS.items()):
+        updated_at = job.get("updated_at") or job.get("created_at") or 0
+        if now - updated_at <= APP_JOB_TTL:
+            continue
+
+        task = APP_JOB_TASKS.get(job_id)
+        if task and not task.done():
+            task.cancel()
+
+        APP_JOB_TASKS.pop(job_id, None)
+        APP_JOBS.pop(job_id, None)
+
+
+async def _run_app_job(job_id: str, body: TaskRequest):
+    job = APP_JOBS.get(job_id)
+    if not job:
+        return
+
+    job["status"] = "running"
+    job["updated_at"] = time.time()
+
+    try:
+        response = await run_atlas(
+            body.task,
+            body.previous_response_id,
+            allow_writes=body.allow_writes,
+            attachments=body.attachments,
+            claude_review=body.claude_review,
+        )
+        job["status"] = "done"
+        job["answer"] = (response.output_text or "").strip()
+        job["response_id"] = response.id
+        job["updated_at"] = time.time()
+    except asyncio.CancelledError:
+        job["status"] = "cancelled"
+        job["error"] = "Задача остановлена."
+        job["updated_at"] = time.time()
+        raise
+    except RateLimitError:
+        job["status"] = "error"
+        job["error"] = "Лимит OpenAI временно исчерпан. Попробуйте позже."
+        job["code"] = 429
+        job["updated_at"] = time.time()
+    except Exception:
+        logger.exception("Background app job failed")
+        job["status"] = "error"
+        job["error"] = "Сервер Atlas временно недоступен."
+        job["code"] = 500
+        job["updated_at"] = time.time()
+    finally:
+        APP_JOB_TASKS.pop(job_id, None)
+
+
 @api.get("/health")
 async def api_health():
     return {
