@@ -316,6 +316,29 @@ select {
   justify-content: center;
   min-width: 0;
   padding: 3px 2px;
+  position: relative;
+}
+
+.tab-badge {
+  align-items: center;
+  background: #ff526e;
+  border: 2px solid #05080c;
+  border-radius: 999px;
+  color: #fff;
+  display: flex;
+  font-size: 9px;
+  font-weight: 800;
+  height: 18px;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 4px;
+  position: absolute;
+  right: calc(50% - 22px);
+  top: 3px;
+}
+
+.tab-badge.hidden {
+  display: none;
 }
 
 .tab-button .tab-icon {
