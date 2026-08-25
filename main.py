@@ -1026,6 +1026,74 @@ async def app_logout(response: Response):
     return {"ok": True}
 
 
+@api.post("/app-jobs")
+async def api_app_jobs(
+    body: TaskRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(
+        default=None,
+        alias="X-Atlas-Key",
+    ),
+):
+    verify_app_request(request, x_atlas_key)
+    _prune_app_jobs()
+
+    job_id = uuid.uuid4().hex
+    now = time.time()
+    APP_JOBS[job_id] = {
+        "job_id": job_id,
+        "status": "queued",
+        "created_at": now,
+        "updated_at": now,
+    }
+    task = asyncio.create_task(_run_app_job(job_id, body))
+    APP_JOB_TASKS[job_id] = task
+    return {"ok": True, "job_id": job_id, "status": "queued"}
+
+
+@api.get("/app-jobs/{job_id}")
+async def api_app_job_get(
+    job_id: str,
+    request: Request,
+    x_atlas_key: str | None = Header(
+        default=None,
+        alias="X-Atlas-Key",
+    ),
+):
+    verify_app_request(request, x_atlas_key)
+    _prune_app_jobs()
+
+    job = APP_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"ok": True, **job}
+
+
+@api.delete("/app-jobs/{job_id}")
+async def api_app_job_delete(
+    job_id: str,
+    request: Request,
+    x_atlas_key: str | None = Header(
+        default=None,
+        alias="X-Atlas-Key",
+    ),
+):
+    verify_app_request(request, x_atlas_key)
+    _prune_app_jobs()
+
+    job = APP_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.get("status") in {"queued", "running"}:
+        task = APP_JOB_TASKS.get(job_id)
+        if task and not task.done():
+            task.cancel()
+        job.update(status="cancelled", error="Задача остановлена.", updated_at=time.time())
+
+    return {"ok": True, **job}
+
+
 @api.post("/app-task")
 async def api_app_task(
     body: TaskRequest,
