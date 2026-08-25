@@ -257,7 +257,7 @@ class AtlasStoreTests(unittest.TestCase):
         self.assertEqual(updated["id"], memory["id"])
         self.assertEqual(updated["content"], "New deployment rule")
         self.assertEqual(
-            self.store.search_memories("project-atlas", "Old deployment"),
+            self.store.search_memories("project-atlas", "Old"),
             [],
         )
 
