@@ -637,6 +637,10 @@ class TaskRequest(BaseModel):
     previous_response_id: str | None = None
 
 
+class AppLoginRequest(BaseModel):
+    key: str
+
+
 def verify_api_key(x_atlas_key: str | None):
     if not secure_key_match(x_atlas_key, ATLAS_API_KEY):
         raise HTTPException(
