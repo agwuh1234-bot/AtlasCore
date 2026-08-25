@@ -25,6 +25,13 @@ from openai import OpenAI, RateLimitError
 
 from atlas_router import BudgetController, ModelRouter, response_usage, response_web_calls
 from atlas_store import AtlasStore, AtlasStoreError, BudgetExceeded, TooManyJobs
+from atlas_knowledge import (
+    MEMORY_POLICY,
+    SHOPIFY_PLAYBOOK,
+    memory_candidates,
+    plugin_registry,
+    seed_project_knowledge,
+)
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -76,7 +83,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("atlas")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 APP_JOB_MAX_ACTIVE = 3
-APP_JOB_RETENTION = 30 * 24 * 3600
+APP_JOB_RETENTION = int(os.environ.get("ATLAS_JOB_RETENTION_DAYS", "180")) * 24 * 3600
 APP_SESSION_MAX_AGE = 30 * 24 * 3600
 APP_ATTACHMENT_MAX_COUNT = 4
 APP_ATTACHMENT_MAX_DATA_CHARS = 7_000_000
@@ -753,7 +760,7 @@ async def _create_with_recovery(request):
 def _project_instructions(project_id, text):
     project = STORE.ensure_project(project_id)
     memory = STORE.memory_context(project_id, text)
-    recent = STORE.list_recent_jobs(project_id, limit=4)
+    recent = STORE.list_recent_jobs(project_id, limit=8)
     history_lines = []
     for job in recent:
         payload = job.get("payload") or {}
@@ -765,8 +772,12 @@ def _project_instructions(project_id, text):
             history_lines.append(f"Atlas: {answer}")
     sections = [
         SYSTEM_PROMPT,
+        MEMORY_POLICY,
         f"\nТекущий проект: {project.get('name', project_id)} ({project_id}).",
     ]
+    project_name = str(project.get("name") or "").lower()
+    if project_id == "project-shopify" or "shopify" in project_name or "шоп" in project_name:
+        sections.append("\nСпециализация проекта:\n" + SHOPIFY_PLAYBOOK)
     if memory:
         sections.append("\nДолговременная память проекта:\n" + memory)
     if history_lines:
@@ -940,6 +951,8 @@ async def run_atlas(
         )
         if explicit_memory and explicit_memory.group(1).strip():
             STORE.remember(project_id, explicit_memory.group(1).strip(), "note")
+        for memory_kind, memory_content in memory_candidates(text):
+            STORE.remember(project_id, memory_content, memory_kind)
 
         try:
             actual_cost = await asyncio.to_thread(
@@ -1045,6 +1058,7 @@ mcp_app = mcp_auth_app
 async def api_lifespan(app: FastAPI):
     global APP_JOB_WORKER, APP_SHUTTING_DOWN
     ensure_store()
+    await asyncio.to_thread(seed_project_knowledge, STORE)
     APP_SHUTTING_DOWN = False
     STORE.recover_stale_jobs(stale_after=90)
     APP_JOB_WORKER = asyncio.create_task(_app_job_worker())
@@ -1559,6 +1573,20 @@ async def api_project_memory_create(
     return {"ok": True, "memory": memory}
 
 
+@api.delete("/app-projects/{project_id}/memory/{memory_id}")
+async def api_project_memory_delete(
+    project_id: str,
+    memory_id: str,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    deleted = await asyncio.to_thread(STORE.delete_memory, project_id, memory_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"ok": True, "deleted": True}
+
+
 @api.get("/app-projects/{project_id}/history")
 async def api_project_history(
     project_id: str,
@@ -1595,6 +1623,15 @@ async def api_actions(
     verify_app_request(request, x_atlas_key)
     actions = await asyncio.to_thread(STORE.list_actions, project_id, 100)
     return {"ok": True, "project_id": project_id, "actions": actions}
+
+
+@api.get("/app-plugins")
+async def api_plugins(
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    return {"ok": True, "plugins": plugin_registry()}
 
 
 @api.get("/app-budget")
