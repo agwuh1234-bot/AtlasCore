@@ -666,12 +666,12 @@ async def api_task(
             detail="OpenAI API rate limit reached.",
         )
 
-    except Exception as exc:
+    except Exception:
         logger.exception("API task failed")
 
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Internal server error",
         )
 
 
