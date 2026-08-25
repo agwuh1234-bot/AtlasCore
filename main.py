@@ -82,7 +82,27 @@ def secure_key_match(provided: str | None, expected: str) -> bool:
 
 
 def app_session_token() -> str:
-    return hmac.new(ATLAS_APP_KEY.encode('utf-8'), b'atlas-app-session-v1', hashlib.sha256).hexdigest()
+    ts = str(int(time.time()))
+    nonce = secrets.token_urlsafe(16)
+    payload = f'{ts}.{nonce}'
+    signature = hmac.new(ATLAS_APP_KEY.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).hexdigest()
+    return f'{payload}.{signature}'
+
+
+def app_session_token_valid(token):
+    if not token:
+        return False
+    try:
+        ts, nonce, signature = token.split('.', 2)
+        payload = f'{ts}.{nonce}'
+        expected = hmac.new(ATLAS_APP_KEY.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).hexdigest()
+        if not secrets.compare_digest(signature, expected):
+            return False
+        ts_int = int(ts)
+        now = int(time.time())
+        return ts_int <= now + 300 and 0 <= now - ts_int <= APP_SESSION_MAX_AGE
+    except Exception:
+        return False
 
 
 SYSTEM_PROMPT = """
