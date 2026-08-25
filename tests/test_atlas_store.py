@@ -147,6 +147,40 @@ class AtlasStoreTests(unittest.TestCase):
         self.assertAlmostEqual(status["spent_usd"], 0.10)
         self.assertAlmostEqual(status["reserved_usd"], 0.0)
 
+    def test_files_are_durable_deduplicated_and_project_scoped(self):
+        first = self.store.save_file(
+            "project-atlas",
+            name="brief.pdf",
+            media_type="application/pdf",
+            data="cGRmLWRhdGE=",
+        )
+        duplicate = self.store.save_file(
+            "project-atlas",
+            name="renamed.pdf",
+            media_type="application/pdf",
+            data="cGRmLWRhdGE=",
+        )
+        other = self.store.save_file(
+            "project-shopify",
+            name="brief.pdf",
+            media_type="application/pdf",
+            data="cGRmLWRhdGE=",
+        )
+        self.assertEqual(first["id"], duplicate["id"])
+        self.assertNotEqual(first["id"], other["id"])
+        self.assertEqual(len(self.store.list_files("project-atlas")), 1)
+        self.assertIsNone(self.store.get_file("project-shopify", first["id"]))
+
+        reopened = AtlasStore(sqlite_path=self.db_path)
+        reopened.initialize()
+        loaded = reopened.get_file("project-atlas", first["id"])
+        self.assertEqual(loaded["data"], "cGRmLWRhdGE=")
+        reopened.close()
+
+        self.assertFalse(self.store.delete_file("project-shopify", first["id"]))
+        self.assertTrue(self.store.delete_file("project-atlas", first["id"]))
+        self.assertEqual(self.store.list_files("project-atlas"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

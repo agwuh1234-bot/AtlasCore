@@ -1438,6 +1438,15 @@ async def api_app_jobs(
             status_code=409,
             detail="Слишком много активных задач. Дождитесь завершения текущих задач.",
         )
+    if body.attachments:
+        try:
+            await asyncio.to_thread(
+                STORE.save_attachments,
+                body.project_id,
+                body.model_dump(mode="json").get("attachments", []),
+            )
+        except Exception:
+            logger.exception("File center could not index job attachments")
     return {"ok": True, "job_id": job["job_id"], "status": job["status"]}
 
 
@@ -1614,6 +1623,45 @@ async def api_project_history(
             }
         )
     return {"ok": True, "project_id": project_id, "history": history}
+
+
+@api.get("/app-files")
+async def api_files(
+    request: Request,
+    project_id: str = "project-general",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    files = await asyncio.to_thread(STORE.list_files, project_id, 100)
+    return {"ok": True, "project_id": STORE._project_id(project_id), "files": files}
+
+
+@api.get("/app-files/{file_id}")
+async def api_file_get(
+    file_id: str,
+    request: Request,
+    project_id: str = "project-general",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    item = await asyncio.to_thread(STORE.get_file, project_id, file_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"ok": True, "file": item}
+
+
+@api.delete("/app-files/{file_id}")
+async def api_file_delete(
+    file_id: str,
+    request: Request,
+    project_id: str = "project-general",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    deleted = await asyncio.to_thread(STORE.delete_file, project_id, file_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"ok": True, "deleted": True, "file_id": file_id}
 
 
 @api.get("/app-actions")

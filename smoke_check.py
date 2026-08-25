@@ -40,6 +40,9 @@ def main() -> None:
         '@api.get("/app-projects")',
         '@api.get("/app-budget")',
         '@api.get("/app-plugins")',
+        '@api.get("/app-files")',
+        '@api.get("/app-files/{file_id}")',
+        '@api.delete("/app-files/{file_id}")',
         '@api.get("/app-system-status")',
         '@api.get("/app-permissions")',
         '@api.delete("/app-projects/{project_id}/memory/{memory_id}")',
@@ -49,7 +52,7 @@ def main() -> None:
         assert needle in main_text, f"main.py missing required text: {needle}"
 
     index_text = read_text("web/index.html")
-    for needle in ["messageInput", "sendBtn", "stopBtn", "/app/projects.js", "/app/projects.css", "/app/recovery.js", "/app/app.js", "/app/ux.js", "/app/status.js", "/app/format.js", "/app/shell.js", "/app/shell.css"]:
+    for needle in ["messageInput", "sendBtn", "stopBtn", "/app/projects.js", "/app/files.js", "/app/projects.css", "/app/recovery.js", "/app/app.js", "/app/ux.js", "/app/status.js", "/app/format.js", "/app/shell.js", "/app/shell.css"]:
         assert needle in index_text, f"web/index.html missing required text: {needle}"
 
     app_js = read_text("web/app.js")
@@ -61,11 +64,15 @@ def main() -> None:
     for needle in ["atlas_active_project_id", "project_id", "/app-projects", "/app-budget"]:
         assert needle in projects_js, f"web/projects.js missing required text: {needle}"
 
+    files_js = read_text("web/files.js")
+    for needle in ["atlasFileCenter", "selectedIds", "/app-files/", "attachments"]:
+        assert needle in files_js, f"web/files.js missing required text: {needle}"
+
     projects_css = read_text("web/projects.css")
     assert ".project-switcher" in projects_css
 
     shell_js = read_text("web/shell.js")
-    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions", "/app-system-status", "/app-permissions"]:
+    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions", "/app-files", "/app-system-status", "/app-permissions"]:
         assert needle in shell_js, f"web/shell.js missing required text: {needle}"
 
     shell_css = read_text("web/shell.css")
@@ -83,7 +90,7 @@ def main() -> None:
         assert needle in recovery_js, f"web/recovery.js missing required text: {needle}"
 
     sw_js = read_text("web/sw.js")
-    for needle in ["projects.js", "projects.css", "recovery.js", "control_center.js", "app.js", "ux.js", "status.js", "format.js", "shell.js", "shell.css"]:
+    for needle in ["projects.js", "files.js", "projects.css", "recovery.js", "control_center.js", "app.js", "ux.js", "status.js", "format.js", "shell.js", "shell.css"]:
         assert needle in sw_js, f"web/sw.js missing required asset: {needle}"
 
     format_js = read_text("web/format.js")

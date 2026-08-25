@@ -292,7 +292,7 @@ select {
   border-top: 1px solid var(--atlas-border);
   display: grid;
   flex: 0 0 calc(var(--atlas-tab-height) + var(--atlas-safe-bottom));
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   padding: 4px 6px var(--atlas-safe-bottom);
   z-index: 25;
 }
@@ -489,4 +489,35 @@ select {
 
 @media (max-width: 360px) {
   .system-grid { grid-template-columns: 1fr; }
+}
+
+
+.file-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.file-actions .panel-action {
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.file-delete {
+  color: #ff879b !important;
+}
+
+.selected-files-card {
+  border-color: rgba(128, 104, 255, .42);
+}
+
+.selected-files-card .panel-action {
+  margin-top: 10px;
+}
+
+@media (max-width: 430px) {
+  .bottom-tabs { padding-left: 2px; padding-right: 2px; }
+  .tab-button { font-size: 9px; }
+  .tab-button .tab-icon { font-size: 18px; }
+  .file-actions { flex-direction: column; }
 }

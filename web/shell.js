@@ -14,6 +14,7 @@
     ['chat', '⌁', 'Чат'],
     ['projects', '▦', 'Проекты'],
     ['memory', '◉', 'Память'],
+    ['files', '▤', 'Файлы'],
     ['actions', '✓', 'Действия'],
     ['plugins', '◇', 'Плагины'],
   ];
@@ -324,6 +325,87 @@
     }
   }
 
+  function fileSize(value) {
+    const size = Number(value || 0);
+    if (size < 1024) return size + ' Б';
+    if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' КБ';
+    return (size / (1024 * 1024)).toFixed(1) + ' МБ';
+  }
+
+  async function loadFiles() {
+    const inner = panelInner('files');
+    if (!inner) return;
+    inner.replaceChildren();
+    inner.append(heading('Файлы', 'Вложения сохраняются в проекте и доступны после перезапуска.'));
+
+    const selected = window.atlasFileCenter?.selectedIds() || [];
+    if (selected.length) {
+      const selectedCard = node('div', 'atlas-card selected-files-card');
+      selectedCard.append(node('h3', '', 'Для следующей команды: ' + selected.length + ' из 4'));
+      selectedCard.append(node('p', '', 'Откройте чат и отправьте команду — выбранные файлы добавятся автоматически.'));
+      const clear = node('button', 'panel-action secondary', 'Очистить выбор');
+      clear.type = 'button';
+      clear.addEventListener('click', () => {
+        window.atlasFileCenter?.clear();
+        loadFiles();
+      });
+      selectedCard.append(clear);
+      inner.append(selectedCard);
+    }
+
+    try {
+      const data = await request('/app-files?project_id=' + encodeURIComponent(projectId()));
+      const files = data.files || [];
+      if (!files.length) {
+        inner.append(node('div', 'empty-state', 'Отправьте PDF, фото или таблицу в чате — Atlas сохранит файл здесь.'));
+        return;
+      }
+      for (const file of files) {
+        const card = node('article', 'atlas-card');
+        const row = node('div', 'atlas-card-row');
+        const copy = node('div');
+        copy.append(node('h3', '', String(file.name || 'Файл')));
+        copy.append(node('p', '', String(file.media_type || 'file') + ' · ' + fileSize(file.size_bytes)));
+        const actions = node('div', 'file-actions');
+        const isSelected = window.atlasFileCenter?.isSelected(file.id);
+        const use = node('button', 'panel-action ' + (isSelected ? 'secondary' : ''), isSelected ? 'Убрать' : 'Использовать');
+        use.type = 'button';
+        use.addEventListener('click', () => {
+          try {
+            if (isSelected) window.atlasFileCenter?.unselect(file.id);
+            else window.atlasFileCenter?.select(file.id);
+            loadFiles();
+          } catch (error) {
+            window.alert(error.message);
+          }
+        });
+        const remove = node('button', 'panel-action secondary file-delete', 'Удалить');
+        remove.type = 'button';
+        remove.addEventListener('click', async () => {
+          if (!confirm('Удалить файл «' + String(file.name || 'Файл') + '» из проекта?')) return;
+          try {
+            await request(
+              '/app-files/' + encodeURIComponent(file.id) + '?project_id=' + encodeURIComponent(projectId()),
+              {method: 'DELETE'}
+            );
+            window.atlasFileCenter?.unselect(file.id);
+            await loadFiles();
+          } catch (error) {
+            window.alert(error.message);
+          }
+        });
+        actions.append(use, remove);
+        row.append(copy, actions);
+        card.append(row);
+        const date = formatDate(file.updated_at);
+        if (date) card.append(node('div', 'action-meta', date));
+        inner.append(card);
+      }
+    } catch (error) {
+      showPanelError(inner, error);
+    }
+  }
+
   async function loadActions() {
     const inner = panelInner('actions');
     if (!inner) return;
@@ -452,6 +534,7 @@
   async function loadPanel(id) {
     if (id === 'projects') return loadProjects();
     if (id === 'memory') return loadMemory();
+    if (id === 'files') return loadFiles();
     if (id === 'actions') return loadActions();
     if (id === 'plugins') return loadPlugins();
   }
@@ -491,6 +574,13 @@
     const logout = $('logoutBtn');
     if (logout) logout.addEventListener('click', () => {
       localStorage.setItem(TAB_KEY, 'chat');
+    });
+
+    window.addEventListener('atlas-files-changed', () => {
+      if (activeTab === 'files' && authenticated) loadFiles();
+    });
+    window.addEventListener('atlas-file-error', (event) => {
+      window.alert(event.detail || 'Не удалось добавить сохранённый файл');
     });
 
     detectSession();
