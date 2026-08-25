@@ -8,10 +8,10 @@ from atlas_store import AtlasStore
 
 
 class SchedulerCalculationTests(unittest.TestCase):
-    def test_daily_schedule_uses_berlin_local_time(self):
+    def test_daily_schedule_uses_kyiv_local_time(self):
         config = normalize_schedule(
             frequency="daily",
-            timezone_name="Europe/Berlin",
+            timezone_name="Europe/Kyiv",
             time_local="09:00",
         )
         after = datetime(2026, 1, 15, 7, 0, tzinfo=timezone.utc).timestamp()
