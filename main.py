@@ -28,9 +28,11 @@ from atlas_store import AtlasStore, AtlasStoreError, BudgetExceeded, TooManyJobs
 from atlas_knowledge import (
     MEMORY_POLICY,
     SHOPIFY_PLAYBOOK,
+    PERMISSION_LEVELS,
     memory_candidates,
     plugin_registry,
     seed_project_knowledge,
+    system_registry,
 )
 
 from telegram import Update
@@ -1632,6 +1634,36 @@ async def api_plugins(
 ):
     verify_app_request(request, x_atlas_key)
     return {"ok": True, "plugins": plugin_registry()}
+
+
+@api.get("/app-system-status")
+async def api_system_status(
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    systems = system_registry(STORE.backend)
+    issues = [
+        {"id": item["id"], "name": item["name"], "status": item["status"]}
+        for item in systems
+        if item["id"] in {"openai", "github", "postgres"} and not item["connected"]
+    ]
+    return {
+        "ok": not issues,
+        "storage_backend": STORE.backend,
+        "systems": systems,
+        "issues": issues,
+        "checked_at": int(time.time()),
+    }
+
+
+@api.get("/app-permissions")
+async def api_permissions(
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    return {"ok": True, "levels": PERMISSION_LEVELS}
 
 
 @api.get("/app-budget")
