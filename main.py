@@ -557,7 +557,7 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
             instructions=SYSTEM_PROMPT,
             previous_response_id=response.id,
             input=outputs,
-            tools=TOOLS,
+            tools=selected_tools,
             tool_choice="none" if last_loop else "auto",
         )
 
