@@ -704,7 +704,7 @@ async def api_bridge(
         alias="X-Atlas-Key",
     ),
 ):
-    verify_api_key(x_atlas_key)
+    verify_bridge_key(x_atlas_key)
 
     try:
         task = (await request.body()).decode("utf-8").strip()
