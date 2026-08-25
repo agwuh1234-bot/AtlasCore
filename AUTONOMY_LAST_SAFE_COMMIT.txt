@@ -1,0 +1,1 @@
+Branch checkpoint prepared through release-gate contracts. Use the branch head shown by GitHub as the authoritative safe checkpoint; do not hard-code an older SHA here.
