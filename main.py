@@ -626,11 +626,12 @@ async def api_health():
     return {
         "ok": True,
         "service": "AtlasCore",
-        "telegram": True,
-        "openai": True,
-        "github": True,
-        "mcp": True,
-        "mcp_endpoint": "/mcp",
+        "process": "alive",
+        "config_loaded": True,
+        "mcp": {
+            "enabled": True,
+            "endpoint": "/mcp",
+        },
         "private": bool(ALLOWED_USER_IDS),
     }
 
