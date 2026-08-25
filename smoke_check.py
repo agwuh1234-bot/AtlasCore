@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import ast
 import json
+import os
 import subprocess
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parent
@@ -86,13 +88,20 @@ def main() -> None:
     assert ".code-block" in format_css
     assert ".prose-link" in format_css
 
-    tests = subprocess.run(
-        [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        timeout=60,
-    )
+    test_env = os.environ.copy()
+    # Pre-deploy tests must never connect to or mutate the production database.
+    test_env.pop("DATABASE_URL", None)
+    test_env.pop("ATLAS_DATABASE_URL", None)
+    with tempfile.TemporaryDirectory(prefix="atlas-smoke-") as temp_dir:
+        test_env["ATLAS_DB_PATH"] = str(Path(temp_dir) / "atlas-test.db")
+        tests = subprocess.run(
+            [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
+            cwd=ROOT,
+            env=test_env,
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
     if tests.returncode != 0:
         print(tests.stdout, file=sys.stderr)
         print(tests.stderr, file=sys.stderr)
