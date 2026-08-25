@@ -242,13 +242,30 @@
     }
   }
 
-  async function loadMemory() {
+  async function loadMemory(query = '') {
     const inner = panelInner('memory');
     if (!inner) return;
     inner.replaceChildren();
-    inner.append(heading('Память', 'Сохраняется в PostgreSQL и не зависит от телефона.'));
 
-    const form = node('form', 'panel-form');
+    const refresh = node('button', 'panel-action secondary', 'Обновить');
+    refresh.type = 'button';
+    refresh.addEventListener('click', () => loadMemory(query));
+    inner.append(heading(
+      'Память',
+      'Проектная память + глобальные предпочтения для всех проектов.',
+      refresh
+    ));
+
+    const form = node('form', 'panel-form memory-form');
+    const scope = node('select', 'panel-input');
+    const projectOption = node('option', '', 'Текущий проект');
+    projectOption.value = projectId();
+    scope.append(projectOption);
+    if (projectId() !== 'project-general') {
+      const globalOption = node('option', '', 'Глобально — для всех проектов');
+      globalOption.value = 'project-general';
+      scope.append(globalOption);
+    }
     const kind = node('select', 'panel-input');
     for (const [value, label] of [
       ['note', 'Заметка'],
@@ -256,6 +273,8 @@
       ['preference', 'Предпочтение'],
       ['goal', 'Цель'],
       ['constraint', 'Ограничение'],
+      ['fact', 'Факт'],
+      ['task', 'Важная задача'],
     ]) {
       const option = node('option', '', label);
       option.value = value;
@@ -263,23 +282,23 @@
     }
     const input = node('textarea', 'panel-input');
     input.rows = 3;
-    input.placeholder = 'Что Atlas должен помнить?';
-    const submit = node('button', 'panel-action', 'Сохранить в память');
+    input.placeholder = 'Устойчивый факт, решение или предпочтение. Секреты не сохранять.';
+    const submit = node('button', 'panel-action', 'Запомнить');
     submit.type = 'submit';
-    form.append(kind, input, submit);
+    form.append(scope, kind, input, submit);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const content = input.value.trim();
       if (!content) return;
       submit.disabled = true;
       try {
-        await request('/app-projects/' + encodeURIComponent(projectId()) + '/memory', {
+        await request('/app-projects/' + encodeURIComponent(scope.value) + '/memory', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({kind: kind.value, content}),
         });
         input.value = '';
-        await loadMemory();
+        await loadMemory(query);
       } catch (error) {
         window.alert(error.message);
       } finally {
@@ -288,37 +307,150 @@
     });
     inner.append(form);
 
+    const searchForm = node('form', 'memory-search');
+    const search = node('input', 'panel-input');
+    search.type = 'search';
+    search.placeholder = 'Найти в памяти';
+    search.value = query;
+    const searchButton = node('button', 'panel-action secondary', 'Найти');
+    searchButton.type = 'submit';
+    searchForm.append(search, searchButton);
+    searchForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      loadMemory(search.value.trim());
+    });
+    inner.append(searchForm);
+
     try {
-      const data = await request('/app-projects/' + encodeURIComponent(projectId()) + '/memory');
-      const memories = data.memories || [];
+      const suffix = query ? '?q=' + encodeURIComponent(query) : '';
+      const requests = [
+        request('/app-projects/' + encodeURIComponent(projectId()) + '/memory-health'),
+        request('/app-projects/' + encodeURIComponent(projectId()) + '/memory' + suffix),
+      ];
+      if (projectId() !== 'project-general') {
+        requests.push(request('/app-projects/project-general/memory' + suffix));
+      }
+      const results = await Promise.all(requests);
+      const health = results[0].health || {};
+      const localMemories = (results[1].memories || []).map((memory) => ({
+        ...memory,
+        memory_scope: 'project',
+      }));
+      const globalMemories = results[2]
+        ? (results[2].memories || []).map((memory) => ({
+            ...memory,
+            memory_scope: 'global',
+          }))
+        : [];
+      const memories = localMemories.concat(globalMemories);
+
+      const healthCard = node('article', 'atlas-card memory-health-card');
+      const healthRow = node('div', 'atlas-card-row');
+      const healthCopy = node('div');
+      healthCopy.append(node('h3', '', 'Состояние памяти'));
+      healthCopy.append(node(
+        'p',
+        '',
+        health.durable
+          ? 'PostgreSQL · переживает перезапуски и смену телефона'
+          : 'Временное локальное хранилище'
+      ));
+      healthRow.append(
+        healthCopy,
+        node(
+          'span',
+          'status-pill ' + (health.status === 'healthy' ? 'connected' : 'confirmation'),
+          health.status === 'healthy' ? 'Здорова' : 'Проверить'
+        )
+      );
+      healthCard.append(healthRow);
+      const stats = node('div', 'memory-stats');
+      stats.append(node('span', '', String(health.total || 0) + ' в проекте'));
+      if (projectId() !== 'project-general') {
+        stats.append(node('span', '', String(health.global_total || 0) + ' глобально'));
+      }
+      stats.append(node('span', '', String(health.duplicate_items || 0) + ' дублей'));
+      stats.append(node('span', '', 'Умный поиск включён'));
+      healthCard.append(stats);
+      healthCard.append(node(
+        'small',
+        '',
+        'Atlas не удаляет память автоматически. Новые эквивалентные записи объединяются без потери текста.'
+      ));
+      inner.append(healthCard);
+
       if (!memories.length) {
-        inner.append(node('div', 'empty-state', 'Память проекта пока пуста.'));
+        inner.append(node(
+          'div',
+          'empty-state',
+          query ? 'По этому запросу ничего не найдено.' : 'Память проекта пока пуста.'
+        ));
         return;
       }
+
+      if (query) {
+        inner.append(node('div', 'memory-result-caption', 'Результаты: ' + memories.length));
+      }
       for (const memory of memories) {
-        const card = node('article', 'atlas-card');
-        const row = node('div', 'atlas-card-row');
-        const copy = node('div');
-        copy.append(node('div', 'memory-kind', String(memory.kind || 'note')));
-        copy.append(node('p', '', String(memory.content || '')));
-        const remove = node('button', 'panel-action secondary', 'Удалить');
+        const ownerProject = memory.memory_scope === 'global'
+          ? 'project-general'
+          : projectId();
+        const card = node('article', 'atlas-card memory-card');
+        const top = node('div', 'memory-card-top');
+        const badges = node('div', 'memory-badges');
+        badges.append(node('div', 'memory-kind', String(memory.kind || 'note')));
+        badges.append(node(
+          'span',
+          'memory-scope ' + memory.memory_scope,
+          memory.memory_scope === 'global' ? 'Для всех проектов' : 'Этот проект'
+        ));
+        top.append(badges);
+
+        const actions = node('div', 'memory-actions');
+        const edit = node('button', 'panel-action secondary', 'Изм.');
+        edit.type = 'button';
+        edit.addEventListener('click', async () => {
+          const content = window.prompt('Изменить запись памяти', String(memory.content || ''));
+          if (!content || !content.trim() || content.trim() === String(memory.content || '')) return;
+          try {
+            await request(
+              '/app-projects/' + encodeURIComponent(ownerProject) + '/memory/' + encodeURIComponent(memory.id),
+              {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({kind: memory.kind || 'note', content: content.trim()}),
+              }
+            );
+            await loadMemory(query);
+          } catch (error) {
+            window.alert(error.message);
+          }
+        });
+        const remove = node('button', 'panel-action secondary danger-btn', 'Удалить');
         remove.type = 'button';
         remove.addEventListener('click', async () => {
           if (!confirm('Удалить эту запись из памяти?')) return;
           try {
             await request(
-              '/app-projects/' + encodeURIComponent(projectId()) + '/memory/' + encodeURIComponent(memory.id),
+              '/app-projects/' + encodeURIComponent(ownerProject) + '/memory/' + encodeURIComponent(memory.id),
               {method: 'DELETE'}
             );
-            await loadMemory();
+            await loadMemory(query);
           } catch (error) {
             window.alert(error.message);
           }
         });
-        row.append(copy, remove);
-        card.append(row);
+        actions.append(edit, remove);
+        top.append(actions);
+        card.append(top);
+        card.append(node('p', 'memory-content', String(memory.content || '')));
         const date = formatDate(memory.updated_at);
-        if (date) card.append(node('div', 'action-meta', date));
+        const meta = node('div', 'action-meta');
+        if (date) meta.append(node('span', '', date));
+        if (query && memory.relevance_score) {
+          meta.append(node('span', '', 'Релевантность ' + Math.round(Number(memory.relevance_score))));
+        }
+        if (meta.childNodes.length) card.append(meta);
         inner.append(card);
       }
     } catch (error) {
