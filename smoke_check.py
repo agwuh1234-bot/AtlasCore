@@ -23,7 +23,7 @@ def main() -> None:
     assert main_py.exists(), "main.py must exist"
     main_text = main_py.read_text(encoding="utf-8")
     ast.parse(main_text, filename="main.py")
-    for module_name in ("atlas_store.py", "atlas_router.py", "atlas_knowledge.py"):
+    for module_name in ("atlas_store.py", "atlas_router.py", "atlas_knowledge.py", "atlas_push.py"):
         module_text = read_text(module_name)
         ast.parse(module_text, filename=module_name)
     assert len(main_text) > 30000, f"main.py text too short: {len(main_text)} <= 30000"
@@ -41,6 +41,9 @@ def main() -> None:
         '@api.get("/app-budget")',
         '@api.get("/app-plugins")',
         '@api.get("/app-files")',
+        '@api.get("/app-push/config")',
+        '@api.post("/app-push/subscribe")',
+        '@api.post("/app-push/test")',
         '@api.get("/app-files/{file_id}")',
         '@api.delete("/app-files/{file_id}")',
         '@api.get("/app-system-status")',
@@ -83,6 +86,10 @@ def main() -> None:
     for needle in ["conversationModeBtn", "stopVoiceBtn", "SpeechRecognition", "requestSubmit"]:
         assert needle in control_center_js, f"web/control_center.js missing required text: {needle}"
 
+    push_js = read_text("web/push.js")
+    for needle in ["PushManager", "applicationServerKey", "/app-push/subscribe", "/app-push/test"]:
+        assert needle in push_js, f"web/push.js missing required text: {needle}"
+
     recovery_js = read_text("web/recovery.js")
     assert len(recovery_js) > 1000, f"web/recovery.js text too short: {len(recovery_js)} <= 1000"
     assert recovery_js != "test", "web/recovery.js must not be exactly 'test'"
@@ -90,7 +97,7 @@ def main() -> None:
         assert needle in recovery_js, f"web/recovery.js missing required text: {needle}"
 
     sw_js = read_text("web/sw.js")
-    for needle in ["projects.js", "files.js", "projects.css", "recovery.js", "control_center.js", "app.js", "ux.js", "status.js", "format.js", "shell.js", "shell.css"]:
+    for needle in ["projects.js", "files.js", "projects.css", "recovery.js", "control_center.js", "push.js", "app.js", "ux.js", "status.js", "format.js", "shell.js", "shell.css"]:
         assert needle in sw_js, f"web/sw.js missing required asset: {needle}"
 
     format_js = read_text("web/format.js")
@@ -102,6 +109,7 @@ def main() -> None:
     requirements = read_text("requirements.txt")
     assert "openai>=2.28,<3" in requirements
     assert "psycopg[binary]>=3.2,<4" in requirements
+    assert "pywebpush>=2.0,<3" in requirements
 
     manifest = json.loads(read_text("web/manifest.json"))
     assert manifest.get("display") == "standalone"
