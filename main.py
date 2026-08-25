@@ -629,7 +629,7 @@ def create_response(**kwargs):
     return openai_client.responses.create(**kwargs)
 
 
-async def run_atlas(text, previous_response_id=None, allow_writes=True, attachments=None):
+async def run_atlas(text, previous_response_id=None, allow_writes=True, attachments=None, claude_review=False):
     text = (text or "")[:MAX_USER_INPUT]
     attachments = attachments or []
 
