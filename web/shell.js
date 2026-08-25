@@ -15,6 +15,7 @@
     ['projects', '▦', 'Проекты'],
     ['memory', '◉', 'Память'],
     ['files', '▤', 'Файлы'],
+    ['auto', '◷', 'Авто'],
     ['actions', '✓', 'Действия'],
     ['plugins', '◇', 'Плагины'],
   ];
@@ -406,6 +407,146 @@
     }
   }
 
+  function scheduleLabel(item) {
+    if (item.frequency === 'once') return 'Один раз';
+    if (item.frequency === 'daily') return 'Каждый день · ' + item.time_local;
+    const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const days = (item.weekdays || []).map((day) => dayNames[Number(day)]).filter(Boolean).join(', ');
+    return days + ' · ' + item.time_local;
+  }
+
+  async function loadSchedules() {
+    const inner = panelInner('auto');
+    if (!inner) return;
+    inner.replaceChildren();
+    inner.append(heading('Автоматизации', 'Безопасные задачи по времени Europe/Berlin. Результат придёт через Push.'));
+
+    const form = node('form', 'panel-form schedule-form');
+    const name = node('input', 'panel-input');
+    name.placeholder = 'Название, например «Утренний отчёт»';
+    name.maxLength = 100;
+    const task = node('textarea', 'panel-input');
+    task.rows = 3;
+    task.placeholder = 'Что Atlas должен сделать?';
+    const frequency = node('select', 'panel-input');
+    for (const [value, label] of [['daily', 'Каждый день'], ['weekly', 'По дням недели'], ['once', 'Один раз']]) {
+      const option = node('option', '', label);
+      option.value = value;
+      frequency.append(option);
+    }
+    const timeInput = node('input', 'panel-input');
+    timeInput.type = 'time';
+    timeInput.value = '09:00';
+    const onceInput = node('input', 'panel-input hidden');
+    onceInput.type = 'datetime-local';
+    const weekdayWrap = node('div', 'weekday-picker hidden');
+    const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    dayNames.forEach((label, index) => {
+      const item = node('label', 'weekday-chip');
+      const input = node('input');
+      input.type = 'checkbox';
+      input.value = String(index);
+      if (index < 5) input.checked = true;
+      item.append(input, node('span', '', label));
+      weekdayWrap.append(item);
+    });
+    const submit = node('button', 'panel-action', 'Создать автоматизацию');
+    submit.type = 'submit';
+
+    const syncFields = () => {
+      const once = frequency.value === 'once';
+      const weekly = frequency.value === 'weekly';
+      timeInput.classList.toggle('hidden', once);
+      onceInput.classList.toggle('hidden', !once);
+      weekdayWrap.classList.toggle('hidden', !weekly);
+    };
+    frequency.addEventListener('change', syncFields);
+    form.append(name, task, frequency, timeInput, onceInput, weekdayWrap, submit);
+    syncFields();
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const weekdays = Array.from(weekdayWrap.querySelectorAll('input:checked')).map((input) => Number(input.value));
+      const payload = {
+        project_id: projectId(),
+        name: name.value.trim(),
+        task: task.value.trim(),
+        frequency: frequency.value,
+        timezone: 'Europe/Berlin',
+        time_local: timeInput.value || '09:00',
+        weekdays,
+        run_at: onceInput.value || null,
+      };
+      if (!payload.name || !payload.task) return;
+      submit.disabled = true;
+      try {
+        await request('/app-schedules', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        name.value = '';
+        task.value = '';
+        await loadSchedules();
+      } catch (error) {
+        window.alert(error.message);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+    inner.append(form);
+
+    try {
+      const data = await request('/app-schedules?project_id=' + encodeURIComponent(projectId()));
+      const schedules = data.schedules || [];
+      if (!schedules.length) {
+        inner.append(node('div', 'empty-state', 'Автоматизаций пока нет. Создайте первую выше.'));
+        return;
+      }
+      for (const schedule of schedules) {
+        const card = node('article', 'atlas-card');
+        const row = node('div', 'atlas-card-row');
+        const copy = node('div');
+        copy.append(node('h3', '', String(schedule.name || 'Автоматизация')));
+        copy.append(node('p', '', scheduleLabel(schedule)));
+        const status = node('span', 'status-pill ' + (schedule.enabled ? 'connected' : 'disconnected'), schedule.enabled ? 'Активна' : 'Пауза');
+        row.append(copy, status);
+        card.append(row);
+        card.append(node('p', 'schedule-task', String(schedule.task || '')));
+        const meta = node('div', 'action-meta');
+        if (schedule.next_run_at) meta.append(node('span', '', 'Следующий запуск: ' + formatDate(schedule.next_run_at)));
+        if (schedule.last_run_at) meta.append(node('span', '', 'Последний: ' + formatDate(schedule.last_run_at)));
+        card.append(meta);
+        const controls = node('div', 'schedule-actions');
+        const toggle = node('button', 'panel-action secondary', schedule.enabled ? 'Пауза' : 'Возобновить');
+        toggle.type = 'button';
+        toggle.addEventListener('click', async () => {
+          try {
+            await request('/app-schedules/' + encodeURIComponent(schedule.id), {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({project_id: projectId(), enabled: !schedule.enabled}),
+            });
+            await loadSchedules();
+          } catch (error) { window.alert(error.message); }
+        });
+        const remove = node('button', 'panel-action secondary file-delete', 'Удалить');
+        remove.type = 'button';
+        remove.addEventListener('click', async () => {
+          if (!confirm('Удалить автоматизацию «' + String(schedule.name || '') + '»?')) return;
+          try {
+            await request('/app-schedules/' + encodeURIComponent(schedule.id) + '?project_id=' + encodeURIComponent(projectId()), {method: 'DELETE'});
+            await loadSchedules();
+          } catch (error) { window.alert(error.message); }
+        });
+        controls.append(toggle, remove);
+        card.append(controls);
+        inner.append(card);
+      }
+    } catch (error) {
+      showPanelError(inner, error);
+    }
+  }
+
   async function loadActions() {
     const inner = panelInner('actions');
     if (!inner) return;
@@ -535,6 +676,7 @@
     if (id === 'projects') return loadProjects();
     if (id === 'memory') return loadMemory();
     if (id === 'files') return loadFiles();
+    if (id === 'auto') return loadSchedules();
     if (id === 'actions') return loadActions();
     if (id === 'plugins') return loadPlugins();
   }
