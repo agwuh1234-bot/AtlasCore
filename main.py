@@ -669,6 +669,15 @@ def verify_app_key(x_atlas_key: str | None):
         )
 
 
+def verify_app_request(request: Request, x_atlas_key: str | None):
+    if app_cookie_valid(request) or secure_key_match(x_atlas_key, ATLAS_APP_KEY):
+        return
+    raise HTTPException(
+        status_code=401,
+        detail="Unauthorized",
+    )
+
+
 def verify_user_access(user_id: int | None):
     if not ALLOWED_USER_IDS:
         return True
