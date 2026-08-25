@@ -769,12 +769,13 @@ async def app_session(request: Request):
 @api.post("/app-task")
 async def api_app_task(
     body: TaskRequest,
+    request: Request,
     x_atlas_key: str | None = Header(
         default=None,
         alias="X-Atlas-Key",
     ),
 ):
-    verify_app_key(x_atlas_key)
+    verify_app_request(request, x_atlas_key)
 
     try:
         response = await run_atlas(
