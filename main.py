@@ -37,6 +37,7 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 ATLAS_API_KEY = os.environ["ATLAS_API_KEY"]
 ATLAS_BRIDGE_KEY = os.environ["ATLAS_BRIDGE_KEY"]
+ATLAS_APP_KEY = os.environ["ATLAS_APP_KEY"]
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 
 REPO = "agwuh1234-bot/AtlasCore"
