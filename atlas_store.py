@@ -23,6 +23,22 @@ DEFAULT_PROJECTS = (
 )
 
 
+MEMORY_KIND_WEIGHTS = {
+    "constraint": 6.0,
+    "decision": 5.5,
+    "preference": 5.0,
+    "goal": 4.5,
+    "fact": 4.0,
+    "task": 3.5,
+    "note": 2.0,
+}
+MEMORY_STOP_WORDS = {
+    "and", "are", "but", "for", "from", "that", "the", "this", "with",
+    "без", "был", "была", "быть", "для", "его", "или", "как", "мне",
+    "мой", "моя", "надо", "она", "они", "это",
+}
+
+
 class AtlasStoreError(RuntimeError):
     pass
 
@@ -357,6 +373,69 @@ class AtlasStore:
                 (response_id, time.time(), project_id),
             )
 
+    @staticmethod
+    def _normalize_memory_content(value: str) -> str:
+        normalized = re.sub(
+            r"[^\w]+",
+            " ",
+            (value or "").casefold(),
+            flags=re.UNICODE,
+        )
+        return " ".join(normalized.split())
+
+    @classmethod
+    def _memory_tokens(cls, value: str) -> set[str]:
+        return {
+            token
+            for token in cls._normalize_memory_content(value).split()
+            if len(token) >= 3 and token not in MEMORY_STOP_WORDS
+        }
+
+    @classmethod
+    def _memory_relevance(
+        cls,
+        memory: dict[str, Any],
+        normalized_query: str,
+        query_tokens: set[str],
+        now: float,
+    ) -> float | None:
+        content = str(memory.get("content") or "")
+        normalized_content = cls._normalize_memory_content(content)
+        kind_weight = MEMORY_KIND_WEIGHTS.get(str(memory.get("kind") or "note"), 1.0)
+        age_days = max(0.0, (now - float(memory.get("updated_at") or now)) / 86400)
+        recency = max(0.0, 2.5 - min(age_days, 365.0) / 146.0)
+
+        if not normalized_query:
+            return kind_weight * 10.0 + recency
+
+        content_tokens = cls._memory_tokens(content)
+        exact_matches = {
+            query_token
+            for query_token in query_tokens
+            if any(
+                query_token == content_token
+                or (
+                    min(len(query_token), len(content_token)) >= 5
+                    and (
+                        query_token.startswith(content_token)
+                        or content_token.startswith(query_token)
+                    )
+                )
+                for content_token in content_tokens
+            )
+        }
+        phrase_match = normalized_query in normalized_content
+        if not exact_matches and not phrase_match:
+            return None
+        coverage = len(exact_matches) / max(1, len(query_tokens))
+        return (
+            len(exact_matches) * 12.0
+            + coverage * 14.0
+            + (22.0 if phrase_match else 0.0)
+            + kind_weight
+            + recency
+        )
+
     def remember(
         self,
         project_id: str | None,
@@ -369,14 +448,47 @@ class AtlasStore:
         clean_kind = re.sub(r"[^a-z0-9_-]", "-", (kind or "note").lower())[:32] or "note"
         if not clean_content:
             raise AtlasStoreError("Memory content is required")
+        normalized_content = self._normalize_memory_content(clean_content)
+        if not normalized_content:
+            raise AtlasStoreError("Memory content is required")
         memory_key = hashlib.sha256(
-            f"{clean_kind}\0{clean_content}".encode("utf-8")
+            f"{clean_kind}\0{normalized_content}".encode("utf-8")
         ).hexdigest()
         memory_id = "memory-" + hashlib.sha256(
             f"{project_id}\0{memory_key}".encode("utf-8")
         ).hexdigest()[:24]
         now = time.time()
         with self._connection(immediate=True) as conn:
+            existing_rows = self._execute(
+                conn,
+                """
+                SELECT *
+                FROM atlas_memories
+                WHERE project_id = ? AND kind = ?
+                ORDER BY updated_at DESC
+                """,
+                (project_id, clean_kind),
+            ).fetchall()
+            for existing_row in existing_rows:
+                existing = dict(existing_row)
+                if self._normalize_memory_content(existing.get("content", "")) != normalized_content:
+                    continue
+                self._execute(
+                    conn,
+                    """
+                    UPDATE atlas_memories
+                    SET content = ?, updated_at = ?
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (clean_content, now, existing["id"], project_id),
+                )
+                row = self._execute(
+                    conn,
+                    "SELECT * FROM atlas_memories WHERE id = ?",
+                    (existing["id"],),
+                ).fetchone()
+                return self._dict(row) or {}
+
             self._execute(
                 conn,
                 """
@@ -405,6 +517,67 @@ class AtlasStore:
             ).fetchone()
         return self._dict(row) or {}
 
+    def update_memory(
+        self,
+        project_id: str | None,
+        memory_id: str,
+        content: str,
+        kind: str = "note",
+    ) -> dict[str, Any] | None:
+        project_id = self._project_id(project_id)
+        memory_id = (memory_id or "").strip()[:100]
+        clean_content = " ".join((content or "").split())[:12000]
+        clean_kind = re.sub(r"[^a-z0-9_-]", "-", (kind or "note").lower())[:32] or "note"
+        normalized_content = self._normalize_memory_content(clean_content)
+        if not memory_id or not normalized_content:
+            raise AtlasStoreError("Memory id and content are required")
+        memory_key = hashlib.sha256(
+            f"{clean_kind}\0{normalized_content}".encode("utf-8")
+        ).hexdigest()
+        with self._connection(immediate=True) as conn:
+            target = self._execute(
+                conn,
+                "SELECT * FROM atlas_memories WHERE id = ? AND project_id = ?",
+                (memory_id, project_id),
+            ).fetchone()
+            if target is None:
+                return None
+            peers = self._execute(
+                conn,
+                """
+                SELECT id, content
+                FROM atlas_memories
+                WHERE project_id = ? AND kind = ? AND id <> ?
+                """,
+                (project_id, clean_kind, memory_id),
+            ).fetchall()
+            for peer_row in peers:
+                peer = dict(peer_row)
+                if self._normalize_memory_content(peer.get("content", "")) == normalized_content:
+                    raise AtlasStoreError("Такая запись уже есть в памяти")
+            self._execute(
+                conn,
+                """
+                UPDATE atlas_memories
+                SET kind = ?, content = ?, memory_key = ?, updated_at = ?
+                WHERE id = ? AND project_id = ?
+                """,
+                (
+                    clean_kind,
+                    clean_content,
+                    memory_key,
+                    time.time(),
+                    memory_id,
+                    project_id,
+                ),
+            )
+            row = self._execute(
+                conn,
+                "SELECT * FROM atlas_memories WHERE id = ? AND project_id = ?",
+                (memory_id, project_id),
+            ).fetchone()
+        return self._dict(row)
+
     def search_memories(
         self,
         project_id: str | None,
@@ -413,31 +586,43 @@ class AtlasStore:
     ) -> list[dict[str, Any]]:
         project_id = self._project_id(project_id)
         limit = max(1, min(int(limit), 30))
-        words = []
-        for word in re.findall(r"[\w-]+", (query or "").lower(), flags=re.UNICODE):
-            if len(word) >= 3 and word not in words:
-                words.append(word)
-            if len(words) == 6:
-                break
-        where = ["project_id = ?"]
-        params: list[Any] = [project_id]
-        if words:
-            where.append("(" + " OR ".join("LOWER(content) LIKE ?" for _ in words) + ")")
-            params.extend(f"%{word}%" for word in words)
-        params.append(limit)
+        normalized_query = self._normalize_memory_content(query)
+        query_tokens = self._memory_tokens(query)
+        now = time.time()
         with self._connection() as conn:
             rows = self._execute(
                 conn,
-                f"""
+                """
                 SELECT id, project_id, kind, content, created_at, updated_at
                 FROM atlas_memories
-                WHERE {' AND '.join(where)}
+                WHERE project_id = ?
                 ORDER BY updated_at DESC
-                LIMIT ?
+                LIMIT 500
                 """,
-                tuple(params),
+                (project_id,),
             ).fetchall()
-        return [dict(row) for row in rows]
+
+        ranked: list[dict[str, Any]] = []
+        for row in rows:
+            memory = dict(row)
+            score = self._memory_relevance(
+                memory,
+                normalized_query,
+                query_tokens,
+                now,
+            )
+            if score is None:
+                continue
+            memory["relevance_score"] = round(score, 3)
+            ranked.append(memory)
+        ranked.sort(
+            key=lambda item: (
+                float(item.get("relevance_score") or 0),
+                float(item.get("updated_at") or 0),
+            ),
+            reverse=True,
+        )
+        return ranked[:limit]
 
     def memory_context(
         self,
@@ -445,18 +630,93 @@ class AtlasStore:
         query: str,
         max_chars: int = 8000,
     ) -> str:
-        memories = self.search_memories(project_id, query, limit=14)
-        if not memories:
-            memories = self.search_memories(project_id, "", limit=10)
-        chunks = []
+        project_id = self._project_id(project_id)
+        candidates: list[tuple[str, dict[str, Any]]] = []
+        candidates.extend(
+            ("project", item)
+            for item in self.search_memories(project_id, query, limit=12)
+        )
+        candidates.extend(
+            ("project", item)
+            for item in self.search_memories(project_id, "", limit=6)
+        )
+        if project_id != "project-general":
+            candidates.extend(
+                ("global", item)
+                for item in self.search_memories("project-general", query, limit=6)
+            )
+            candidates.extend(
+                ("global", item)
+                for item in self.search_memories("project-general", "", limit=5)
+            )
+
+        chunks: list[str] = []
+        seen: set[str] = set()
         size = 0
-        for memory in memories:
-            line = f"- [{memory['kind']}] {memory['content']}"
+        for scope, memory in candidates:
+            normalized = self._normalize_memory_content(memory.get("content", ""))
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            line = f"- [{scope}:{memory['kind']}] {memory['content']}"
             if size + len(line) > max_chars:
                 break
             chunks.append(line)
             size += len(line)
         return "\n".join(chunks)
+
+    def memory_health(self, project_id: str | None) -> dict[str, Any]:
+        project_id = self._project_id(project_id)
+        with self._connection() as conn:
+            rows = self._execute(
+                conn,
+                """
+                SELECT id, kind, content, created_at, updated_at
+                FROM atlas_memories
+                WHERE project_id = ?
+                ORDER BY updated_at DESC
+                """,
+                (project_id,),
+            ).fetchall()
+            global_count = 0
+            if project_id != "project-general":
+                global_row = self._execute(
+                    conn,
+                    "SELECT COUNT(*) AS total FROM atlas_memories WHERE project_id = ?",
+                    ("project-general",),
+                ).fetchone()
+                global_count = int(dict(global_row)["total"]) if global_row else 0
+
+        memories = [dict(row) for row in rows]
+        by_kind: dict[str, int] = {}
+        fingerprints: dict[str, list[str]] = {}
+        characters = 0
+        for memory in memories:
+            kind = str(memory.get("kind") or "note")
+            by_kind[kind] = by_kind.get(kind, 0) + 1
+            content = str(memory.get("content") or "")
+            characters += len(content)
+            fingerprint = self._normalize_memory_content(content)
+            if fingerprint:
+                fingerprints.setdefault(fingerprint, []).append(str(memory["id"]))
+        duplicate_groups = sum(1 for ids in fingerprints.values() if len(ids) > 1)
+        duplicate_items = sum(max(0, len(ids) - 1) for ids in fingerprints.values())
+        total = len(memories)
+        status = "attention" if duplicate_groups or total > 250 else "healthy"
+        return {
+            "project_id": project_id,
+            "status": status,
+            "durable": self.backend == "postgres",
+            "backend": self.backend,
+            "total": total,
+            "global_total": global_count,
+            "characters": characters,
+            "by_kind": by_kind,
+            "duplicate_groups": duplicate_groups,
+            "duplicate_items": duplicate_items,
+            "retrieval": "ranked-local-and-global",
+            "automatic_deletion": False,
+        }
 
     def delete_memory(self, project_id: str | None, memory_id: str) -> bool:
         project_id = self._project_id(project_id)

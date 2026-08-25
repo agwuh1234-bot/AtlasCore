@@ -259,7 +259,7 @@ TOOLS.extend([
     {
         "type": "function",
         "name": "memory_search",
-        "description": "Найти решения, предпочтения и факты в памяти текущего проекта.",
+        "description": "Найти решения и факты в памяти текущего проекта и глобальных предпочтениях.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -297,7 +297,7 @@ _TOOL_DESCRIPTIONS = {
     'github_replace_text': 'Точечно заменить один уникальный фрагмент текста в файле и создать commit. Использовать для небольших безопасных изменений.',
     'github_write_file': 'Создать новый файл или полностью заменить существующий файл и создать commit. Не использовать для main.py.',
     'claude_ask': 'Попросить Claude дать независимое второе мнение, ревью кода или сложный анализ. Не использовать для простых задач.',
-    'memory_search': 'Найти релевантный контекст в памяти текущего проекта.',
+    'memory_search': 'Найти релевантный контекст в памяти текущего проекта и глобальной памяти.',
     'memory_remember': 'Сохранить устойчивый факт в памяти текущего проекта. Не сохранять секреты.',
 }
 for _tool in TOOLS:
@@ -649,11 +649,28 @@ async def execute_tool(name, arguments, run_context=None):
                 result = await claude_ask(arguments["prompt"])
                 BUDGET.record_claude(job_id, project_id, CLAUDE_MODEL)
         elif name == "memory_search":
+            memory_query = arguments.get("query", "")
+            memory_limit = arguments.get("limit", 8)
             memories = STORE.search_memories(
                 project_id,
-                arguments.get("query", ""),
-                arguments.get("limit", 8),
+                memory_query,
+                memory_limit,
             )
+            for memory in memories:
+                memory["scope"] = "project"
+            if project_id != "project-general":
+                global_memories = STORE.search_memories(
+                    "project-general",
+                    memory_query,
+                    max(1, min(memory_limit, 6)),
+                )
+                for memory in global_memories:
+                    memory["scope"] = "global"
+                known = {memory.get("id") for memory in memories}
+                memories.extend(
+                    memory for memory in global_memories
+                    if memory.get("id") not in known
+                )
             result = json.dumps({"ok": True, "memories": memories}, ensure_ascii=False)
         elif name == "memory_remember":
             memory = STORE.remember(
@@ -1649,6 +1666,17 @@ async def api_project_memory(
     return {"ok": True, "project_id": project_id, "memories": memories}
 
 
+@api.get("/app-projects/{project_id}/memory-health")
+async def api_project_memory_health(
+    project_id: str,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    health = await asyncio.to_thread(STORE.memory_health, project_id)
+    return {"ok": True, "health": health}
+
+
 @api.post("/app-projects/{project_id}/memory")
 async def api_project_memory_create(
     project_id: str,
@@ -1666,6 +1694,30 @@ async def api_project_memory_create(
         )
     except AtlasStoreError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "memory": memory}
+
+
+@api.patch("/app-projects/{project_id}/memory/{memory_id}")
+async def api_project_memory_update(
+    project_id: str,
+    memory_id: str,
+    body: MemoryCreateRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    try:
+        memory = await asyncio.to_thread(
+            STORE.update_memory,
+            project_id,
+            memory_id,
+            body.content,
+            body.kind,
+        )
+    except AtlasStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if memory is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
     return {"ok": True, "memory": memory}
 
 
