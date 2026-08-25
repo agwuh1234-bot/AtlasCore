@@ -102,6 +102,14 @@ def plugin_registry() -> list[dict[str, Any]]:
             "requires_confirmation": False,
         },
         {
+            "id": "files",
+            "name": "Файловый центр",
+            "description": "PDF, фото и таблицы сохраняются отдельно для каждого проекта.",
+            "status": "connected",
+            "permission": "confirm-writes",
+            "requires_confirmation": True,
+        },
+        {
             "id": "shopify",
             "name": "Shopify Brain",
             "description": (
