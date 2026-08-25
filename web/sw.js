@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atlas-app-v3';
+const CACHE_NAME = 'atlas-app-v4';
 const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/app.js', '/app/icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -34,4 +34,14 @@ self.addEventListener('fetch', (event) => {
       throw new Error('offline');
     }
   })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      if (list.length > 0) return list[0].focus();
+      return clients.openWindow('/');
+    })
+  );
 });
