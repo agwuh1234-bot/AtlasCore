@@ -125,6 +125,11 @@
       const iconNode = node('span', 'tab-icon', icon);
       const labelNode = node('span', 'tab-label', label);
       button.append(iconNode, labelNode);
+      if (id === 'actions') {
+        const badge = node('span', 'tab-badge hidden', '');
+        badge.dataset.approvalBadge = '1';
+        button.append(badge);
+      }
       button.addEventListener('click', () => activateTab(id));
       nav.append(button);
     }
@@ -733,6 +738,7 @@
       ]);
       const approvals = approvalData.approvals || [];
       const pending = approvals.filter((item) => item.status === 'pending');
+      setApprovalBadge(pending.length);
       const resolved = approvals.filter((item) => item.status !== 'pending').slice(0, 8);
       const actions = actionData.actions || [];
 
@@ -958,6 +964,31 @@
     if (id === 'plugins') return loadPlugins();
   }
 
+  function setApprovalBadge(count) {
+    const badge = document.querySelector('[data-approval-badge="1"]');
+    if (!badge) return;
+    const value = Math.max(0, Number(count || 0));
+    badge.textContent = value > 9 ? '9+' : String(value || '');
+    badge.classList.toggle('hidden', value === 0);
+  }
+
+  async function refreshApprovalBadge() {
+    if (!authenticated) {
+      setApprovalBadge(0);
+      return;
+    }
+    try {
+      const data = await request(
+        '/app-approvals?project_id=' + encodeURIComponent(projectId())
+      );
+      setApprovalBadge((data.approvals || []).filter(
+        (item) => item.status === 'pending'
+      ).length);
+    } catch {
+      setApprovalBadge(0);
+    }
+  }
+
   async function detectSession() {
     try {
       const data = await request('/app-session');
@@ -967,6 +998,7 @@
     }
     syncAuthUi();
     activateTab(authenticated ? activeTab : 'chat', false);
+    if (authenticated) refreshApprovalBadge();
   }
 
   function init() {
