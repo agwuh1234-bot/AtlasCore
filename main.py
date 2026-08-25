@@ -792,6 +792,12 @@ async def app_session(request: Request):
     return {"authenticated": app_cookie_valid(request)}
 
 
+@api.post("/app-logout")
+async def app_logout(response: Response):
+    response.delete_cookie('atlas_app_session', path='/')
+    return {"ok": True}
+
+
 @api.post("/app-task")
 async def api_app_task(
     body: TaskRequest,
