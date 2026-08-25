@@ -1,0 +1,17 @@
+name: Autonomy Static Validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m py_compile atlas_autonomy.py atlas_autonomy_store.py atlas_autonomy_workers.py atlas_autonomy_runtime.py
+      - run: python -m unittest tests.test_autonomy_rollout
