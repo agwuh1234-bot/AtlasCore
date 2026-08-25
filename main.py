@@ -612,7 +612,15 @@ class TaskRequest(BaseModel):
 
 
 def verify_api_key(x_atlas_key: str | None):
-    if x_atlas_key != ATLAS_API_KEY:
+    if not secure_key_match(x_atlas_key, ATLAS_API_KEY):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized",
+        )
+
+
+def verify_bridge_key(x_atlas_key: str | None):
+    if not secure_key_match(x_atlas_key, ATLAS_BRIDGE_KEY):
         raise HTTPException(
             status_code=401,
             detail="Unauthorized",
