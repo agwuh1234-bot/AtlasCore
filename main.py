@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 import httpx
 import uvicorn
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
 from mcp.server.fastmcp import FastMCP
 from openai import OpenAI, RateLimitError
