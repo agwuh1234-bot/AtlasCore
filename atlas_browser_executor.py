@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import ipaddress
 import json
 import os
@@ -11,6 +10,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+from atlas_browser_sessions import BrowserSessionError, BrowserSessionStore
 
 
 class BrowserExecutorError(RuntimeError):
@@ -41,20 +42,18 @@ class BrowserResult:
 
 
 class BrowserExecutor:
-    """Small, auditable Playwright executor for Atlas.
-
-    V1 deliberately exposes a narrow action vocabulary instead of arbitrary Python/JS.
-    That gives Atlas useful browser hands while keeping network and execution boundaries
-    reviewable. Persistent authenticated sessions can be added later as encrypted state.
-    """
+    """Auditable Playwright executor with optional encrypted auth persistence."""
 
     ALLOWED_ACTIONS = {"goto", "click", "fill", "press", "wait", "screenshot", "extract"}
 
-    def __init__(self, artifact_dir: str | None = None) -> None:
+    def __init__(self, artifact_dir: str | None = None, session_store: BrowserSessionStore | None = None) -> None:
         self.artifact_dir = Path(artifact_dir or os.environ.get("ATLAS_BROWSER_ARTIFACT_DIR", "/tmp/atlas-browser"))
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_ms = int(os.environ.get("ATLAS_BROWSER_TIMEOUT_MS", "30000"))
         self.max_actions = int(os.environ.get("ATLAS_BROWSER_MAX_ACTIONS", "40"))
+        self.session_store = session_store
+        if self.session_store is None and os.environ.get("ATLAS_BROWSER_SESSION_KEY"):
+            self.session_store = BrowserSessionStore()
 
     @staticmethod
     def _validate_public_url(url: str) -> str:
@@ -74,13 +73,24 @@ class BrowserExecutor:
                 raise BrowserExecutorError("Local/private targets are blocked")
         return url
 
-    async def run(self, *, start_url: str, actions: list[dict[str, Any]]) -> BrowserResult:
+    async def run(
+        self,
+        *,
+        start_url: str,
+        actions: list[dict[str, Any]],
+        session_name: str | None = None,
+        save_session: bool = False,
+    ) -> BrowserResult:
         if len(actions) > self.max_actions:
             raise BrowserExecutorError(f"Too many browser actions; max={self.max_actions}")
         self._validate_public_url(start_url)
         for action in actions:
             if action.get("type") not in self.ALLOWED_ACTIONS:
                 raise BrowserExecutorError(f"Unsupported browser action: {action.get('type')}")
+        if (session_name or save_session) and self.session_store is None:
+            raise BrowserExecutorError("Encrypted browser session store is not configured")
+        if save_session and not session_name:
+            raise BrowserExecutorError("session_name is required when save_session=true")
 
         job_id = uuid.uuid4().hex
         job_dir = self.artifact_dir / job_id
@@ -96,7 +106,11 @@ class BrowserExecutor:
         try:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(headless=True)
-                context = await browser.new_context(accept_downloads=False)
+                context_options: dict[str, Any] = {"accept_downloads": False}
+                if session_name and self.session_store and self.session_store.exists(session_name):
+                    context_options["storage_state"] = self.session_store.load(session_name)
+                    log.append({"type": "session_load", "name": session_name, "at": time.time()})
+                context = await browser.new_context(**context_options)
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout_ms)
                 await page.goto(start_url, wait_until="domcontentloaded")
@@ -141,6 +155,10 @@ class BrowserExecutor:
                         entry.update(selector=selector, chars=min(len(text), 200_000))
                     log.append(entry)
 
+                if save_session and session_name and self.session_store:
+                    self.session_store.save(session_name, await context.storage_state(indexed_db=True))
+                    log.append({"type": "session_save", "name": session_name, "at": time.time()})
+
                 final_shot = job_dir / "final.png"
                 await page.screenshot(path=str(final_shot), full_page=True)
                 artifacts.append(BrowserArtifact("screenshot", str(final_shot)))
@@ -150,5 +168,5 @@ class BrowserExecutor:
                 await context.close()
                 await browser.close()
                 return result
-        except Exception as exc:
+        except (BrowserSessionError, Exception) as exc:
             return BrowserResult(job_id, False, "", "", "", artifacts, log, f"{type(exc).__name__}: {exc}"[:1000])
