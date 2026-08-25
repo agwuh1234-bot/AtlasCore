@@ -1,5 +1,5 @@
-const CACHE_NAME = 'atlas-app-v16';
-const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/projects.css', '/app/format.css', '/app/shell.css', '/app/projects.js', '/app/files.js', '/app/control_center.js', '/app/app.js', '/app/ux.js', '/app/status.js', '/app/format.js', '/app/recovery.js', '/app/shell.js', '/app/icon.svg'];
+const CACHE_NAME = 'atlas-app-v17';
+const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/projects.css', '/app/format.css', '/app/shell.css', '/app/projects.js', '/app/files.js', '/app/control_center.js', '/app/push.js', '/app/app.js', '/app/ux.js', '/app/status.js', '/app/format.js', '/app/recovery.js', '/app/shell.js', '/app/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
@@ -36,12 +36,32 @@ self.addEventListener('fetch', (event) => {
   })());
 });
 
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Atlas', body: 'Задача выполнена', url: '/' };
+  try {
+    if (event.data) payload = Object.assign(payload, event.data.json());
+  } catch {
+    if (event.data) payload.body = event.data.text();
+  }
+  event.waitUntil(self.registration.showNotification(payload.title || 'Atlas', {
+    body: payload.body || 'Задача выполнена',
+    icon: '/app/icon.svg',
+    badge: '/app/icon.svg',
+    tag: payload.tag || 'atlas-done',
+    data: { url: payload.url || '/' },
+  }));
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      if (list.length > 0) return list[0].focus();
-      return clients.openWindow('/');
+      const target = (event.notification.data && event.notification.data.url) || '/';
+      if (list.length > 0) {
+        const client = list[0];
+        return client.focus().then(() => client.navigate ? client.navigate(target) : client);
+      }
+      return clients.openWindow(target);
     })
   );
 });

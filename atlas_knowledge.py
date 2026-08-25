@@ -110,6 +110,14 @@ def plugin_registry() -> list[dict[str, Any]]:
             "requires_confirmation": True,
         },
         {
+            "id": "push",
+            "name": "Web Push",
+            "description": "Фоновые уведомления о завершении задач для установленного PWA.",
+            "status": "available",
+            "permission": "confirm-writes",
+            "requires_confirmation": True,
+        },
+        {
             "id": "shopify",
             "name": "Shopify Brain",
             "description": (
