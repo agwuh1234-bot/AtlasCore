@@ -73,6 +73,10 @@ def secure_key_match(provided: str | None, expected: str) -> bool:
     return bool(provided) and secrets.compare_digest(provided, expected)
 
 
+def app_session_token() -> str:
+    return hmac.new(ATLAS_APP_KEY.encode('utf-8'), b'atlas-app-session-v1', hashlib.sha256).hexdigest()
+
+
 SYSTEM_PROMPT = """
 Ð¢Ñ Atlas â Ð¿ÐµÑÑÐ¾Ð½Ð°Ð»ÑÐ½ÑÐ¹ ÐÐ-Ð°ÑÑÐ¸ÑÑÐµÐ½Ñ Ð¸ ÑÐ´ÑÐ¾ Ð°Ð²ÑÐ¾Ð¼Ð°ÑÐ¸Ð·Ð°ÑÐ¸Ð¸.
 
