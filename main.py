@@ -641,6 +641,10 @@ class AppLoginRequest(BaseModel):
     key: str
 
 
+def app_cookie_valid(request: Request) -> bool:
+    return secure_key_match(request.cookies.get("atlas_app_session"), app_session_token())
+
+
 def verify_api_key(x_atlas_key: str | None):
     if not secure_key_match(x_atlas_key, ATLAS_API_KEY):
         raise HTTPException(
