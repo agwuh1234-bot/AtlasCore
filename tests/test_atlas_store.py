@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from atlas_store import AtlasStore, BudgetExceeded, TooManyJobs
+from atlas_store import AtlasStore, AtlasStoreError, BudgetExceeded, TooManyJobs
 
 
 class AtlasStoreTests(unittest.TestCase):
@@ -270,6 +270,125 @@ class AtlasStoreTests(unittest.TestCase):
         self.assertEqual(health["by_kind"]["decision"], 1)
         self.assertFalse(health["automatic_deletion"])
         self.assertEqual(health["retrieval"], "ranked-local-and-global")
+
+
+    def test_approval_request_is_durable_and_deduplicated(self):
+        arguments = {
+            "path": "README.md",
+            "old_text": "old",
+            "new_text": "new",
+            "commit_message": "Update readme",
+        }
+        first = self.store.request_approval(
+            tool="github_replace_text",
+            arguments=arguments,
+            summary="Change README",
+            job_id="job-approval",
+            project_id="project-atlas",
+        )
+        duplicate = self.store.request_approval(
+            tool="github_replace_text",
+            arguments=arguments,
+            summary="Change README again",
+            job_id="job-approval",
+            project_id="project-atlas",
+        )
+        self.assertEqual(first["id"], duplicate["id"])
+        self.assertEqual(first["status"], "pending")
+
+        reopened = AtlasStore(sqlite_path=self.db_path)
+        reopened.initialize()
+        approvals = reopened.list_approvals("project-atlas")
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0]["arguments"]["path"], "README.md")
+        reopened.close()
+
+    def test_approval_is_claimed_and_completed_once(self):
+        approval = self.store.request_approval(
+            tool="github_write_file",
+            arguments={
+                "path": "notes.txt",
+                "content": "safe content",
+                "commit_message": "Add notes",
+            },
+            summary="Create notes",
+            project_id="project-atlas",
+        )
+        self.assertIsNone(
+            self.store.claim_approval(
+                "project-shopify",
+                approval["id"],
+                "worker-wrong",
+            )
+        )
+        claimed = self.store.claim_approval(
+            "project-atlas",
+            approval["id"],
+            "worker-one",
+        )
+        self.assertEqual(claimed["status"], "executing")
+        self.assertIsNone(
+            self.store.claim_approval(
+                "project-atlas",
+                approval["id"],
+                "worker-two",
+            )
+        )
+        self.assertFalse(
+            self.store.complete_approval(
+                "project-atlas",
+                approval["id"],
+                "worker-two",
+                {"ok": True},
+            )
+        )
+        self.assertTrue(
+            self.store.complete_approval(
+                "project-atlas",
+                approval["id"],
+                "worker-one",
+                {"ok": True, "commit_sha": "abc123"},
+            )
+        )
+        completed = self.store.get_approval("project-atlas", approval["id"])
+        self.assertEqual(completed["status"], "approved")
+        self.assertEqual(completed["result"]["commit_sha"], "abc123")
+        self.assertFalse(
+            self.store.reject_approval("project-atlas", approval["id"])
+        )
+
+    def test_pending_approval_can_be_rejected_only_in_its_project(self):
+        approval = self.store.request_approval(
+            tool="github_write_file",
+            arguments={
+                "path": "draft.txt",
+                "content": "draft",
+                "commit_message": "Draft",
+            },
+            summary="Create draft",
+            project_id="project-promo",
+        )
+        self.assertFalse(
+            self.store.reject_approval("project-atlas", approval["id"])
+        )
+        self.assertTrue(
+            self.store.reject_approval("project-promo", approval["id"])
+        )
+        rejected = self.store.get_approval("project-promo", approval["id"])
+        self.assertEqual(rejected["status"], "rejected")
+
+    def test_approval_payload_size_is_bounded(self):
+        with self.assertRaises(AtlasStoreError):
+            self.store.request_approval(
+                tool="github_write_file",
+                arguments={
+                    "path": "huge.txt",
+                    "content": "x" * 500_001,
+                    "commit_message": "Huge",
+                },
+                summary="Oversized write",
+                project_id="project-atlas",
+            )
 
 
 if __name__ == "__main__":
