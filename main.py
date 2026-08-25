@@ -53,8 +53,6 @@ logging.basicConfig(
 
 logger = logging.getLogger("atlas")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
-mcp = FastMCP("Atlas")
-mcp = FastMCP("Atlas")
 
 
 SYSTEM_PROMPT = """
@@ -524,11 +522,52 @@ async def run_atlas(text, previous_response_id=None):
 
 # ---------------- MCP BRIDGE ----------------
 
+mcp = FastMCP(
+    "AtlasCore",
+    stateless_http=True,
+    json_response=True,
+    streamable_http_path="/",
+)
+
+
 @mcp.tool()
-async def atlas_task(task: str) -> str:
-    """Run a task through Atlas Core."""
-    response = await run_atlas(task)
-    return response.output_text or ""
+async def atlas_task(
+    task: str,
+    atlas_key: str,
+    previous_response_id: str | None = None,
+) -> dict:
+    """
+    Send a task to Atlas.
+
+    atlas_key must match the ATLAS_API_KEY environment variable.
+    """
+    if atlas_key != ATLAS_API_KEY:
+        return {
+            "ok": False,
+            "error": "Unauthorized",
+        }
+
+    try:
+        response = await run_atlas(
+            task,
+            previous_response_id,
+        )
+
+        answer = (response.output_text or "").strip()
+
+        return {
+            "ok": True,
+            "response_id": response.id,
+            "answer": answer,
+        }
+
+    except Exception as exc:
+        logger.exception("MCP Atlas task failed")
+
+        return {
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 mcp_app = mcp.streamable_http_app()
@@ -536,7 +575,8 @@ mcp_app = mcp.streamable_http_app()
 
 @asynccontextmanager
 async def api_lifespan(app: FastAPI):
-    yield
+    async with mcp.session_manager.run():
+        yield
 
 
 api = FastAPI(
