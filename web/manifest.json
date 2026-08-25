@@ -1,0 +1,11 @@
+{
+  "name": "Atlas",
+  "short_name": "Atlas",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#05070a",
+  "theme_color": "#05070a",
+  "orientation": "portrait-primary",
+  "description": "Atlas AI Core"
+}
