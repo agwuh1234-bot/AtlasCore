@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import ast
 import json
+import subprocess
 import sys
 
 
@@ -19,7 +20,10 @@ def main() -> None:
     main_py = ROOT / "main.py"
     assert main_py.exists(), "main.py must exist"
     main_text = main_py.read_text(encoding="utf-8")
-    ast.parse(main_text, filename='main.py')
+    ast.parse(main_text, filename="main.py")
+    for module_name in ("atlas_store.py", "atlas_router.py"):
+        module_text = read_text(module_name)
+        ast.parse(module_text, filename=module_name)
     assert len(main_text) > 30000, f"main.py text too short: {len(main_text)} <= 30000"
     for needle in [
         "async def run_atlas",
@@ -29,17 +33,29 @@ def main() -> None:
         "github_replace_text",
         "app_session_token_valid",
         "APP_JOB_MAX_ACTIVE",
+        "STORE = AtlasStore",
+        "async def _app_job_worker",
+        '@api.get("/app-projects")',
+        '@api.get("/app-budget")',
+        "MODEL_ROUTER",
     ]:
         assert needle in main_text, f"main.py missing required text: {needle}"
 
     index_text = read_text("web/index.html")
-    for needle in ["messageInput", "sendBtn", "stopBtn", "/app/recovery.js", "/app/app.js", "/app/ux.js", "/app/status.js", "/app/format.js"]:
+    for needle in ["messageInput", "sendBtn", "stopBtn", "/app/projects.js", "/app/projects.css", "/app/recovery.js", "/app/app.js", "/app/ux.js", "/app/status.js", "/app/format.js"]:
         assert needle in index_text, f"web/index.html missing required text: {needle}"
 
     app_js = read_text("web/app.js")
     assert len(app_js) > 5000, f"web/app.js text too short: {len(app_js)} <= 5000"
     for needle in ["pollJob", "SpeechRecognition", "speechSynthesis", "/app-jobs"]:
         assert needle in app_js, f"web/app.js missing required text: {needle}"
+
+    projects_js = read_text("web/projects.js")
+    for needle in ["atlas_active_project_id", "project_id", "/app-projects", "/app-budget"]:
+        assert needle in projects_js, f"web/projects.js missing required text: {needle}"
+
+    projects_css = read_text("web/projects.css")
+    assert ".project-switcher" in projects_css
 
     recovery_js = read_text("web/recovery.js")
     assert len(recovery_js) > 1000, f"web/recovery.js text too short: {len(recovery_js)} <= 1000"
@@ -48,7 +64,7 @@ def main() -> None:
         assert needle in recovery_js, f"web/recovery.js missing required text: {needle}"
 
     sw_js = read_text("web/sw.js")
-    for needle in ["recovery.js", "app.js", "ux.js", "status.js", "format.js"]:
+    for needle in ["projects.js", "projects.css", "recovery.js", "app.js", "ux.js", "status.js", "format.js"]:
         assert needle in sw_js, f"web/sw.js missing required asset: {needle}"
 
     format_js = read_text("web/format.js")
@@ -58,7 +74,8 @@ def main() -> None:
     assert "eval(" not in format_js, "web/format.js must not contain eval("
 
     requirements = read_text("requirements.txt")
-    assert requirements.strip(), "requirements.txt must not be empty"
+    assert "openai>=2.28,<3" in requirements
+    assert "psycopg[binary]>=3.2,<4" in requirements
 
     manifest = json.loads(read_text("web/manifest.json"))
     assert manifest.get("display") == "standalone"
@@ -69,6 +86,18 @@ def main() -> None:
     assert ".code-block" in format_css
     assert ".prose-link" in format_css
 
+    tests = subprocess.run(
+        [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    if tests.returncode != 0:
+        print(tests.stdout, file=sys.stderr)
+        print(tests.stderr, file=sys.stderr)
+        raise AssertionError("Atlas unit tests failed")
+    print(tests.stderr.strip())
     print("ATLAS_SMOKE_OK")
 
 

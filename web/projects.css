@@ -1,0 +1,50 @@
+.project-switcher {
+  align-items: center;
+  background: rgba(10, 14, 20, .92);
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  display: flex;
+  gap: .55rem;
+  padding: .55rem max(1rem, env(safe-area-inset-right)) .55rem max(1rem, env(safe-area-inset-left));
+}
+
+.project-label {
+  color: #8d98a8;
+  font-size: .78rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+#projectSelect {
+  appearance: none;
+  background: #121821;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: .65rem;
+  color: #f4f7fb;
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  padding: .55rem 2rem .55rem .75rem;
+}
+
+#addProjectBtn {
+  font-size: 1.15rem;
+  min-width: 2.4rem;
+  padding-inline: .6rem;
+}
+
+.settings-status {
+  color: #9eabba;
+  font-size: .85rem;
+  line-height: 1.35;
+  margin: .25rem 0 .65rem;
+}
+
+@media (min-width: 760px) {
+  .project-switcher {
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: .85rem;
+    margin: .65rem auto 0;
+    max-width: 720px;
+    width: calc(100% - 2rem);
+  }
+}

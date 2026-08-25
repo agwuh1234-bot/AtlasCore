@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 import httpx
 import uvicorn
@@ -20,6 +21,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from mcp.server.fastmcp import FastMCP
 from openai import OpenAI, RateLimitError
+
+from atlas_router import BudgetController, ModelRouter, response_usage, response_web_calls
+from atlas_store import AtlasStore, AtlasStoreError, BudgetExceeded, TooManyJobs
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -47,7 +51,6 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 
 REPO = "agwuh1234-bot/AtlasCore"
-MODEL = "gpt-5.4-mini"
 PORT = int(os.environ.get("PORT", "8080"))
 
 MAX_USER_INPUT = 6000
@@ -71,14 +74,21 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger("atlas")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
-APP_JOBS = {}
-APP_JOB_TASKS = {}
-APP_JOB_TTL = 3600
 APP_JOB_MAX_ACTIVE = 3
+APP_JOB_RETENTION = 30 * 24 * 3600
 APP_SESSION_MAX_AGE = 30 * 24 * 3600
 APP_ATTACHMENT_MAX_COUNT = 4
 APP_ATTACHMENT_MAX_DATA_CHARS = 7_000_000
 MAX_APP_BODY_BYTES = 32 * 1024 * 1024
+
+MODEL_ROUTER = ModelRouter()
+MODEL = MODEL_ROUTER.fast_model
+STORE = AtlasStore(max_active_jobs=APP_JOB_MAX_ACTIVE)
+BUDGET = BudgetController(STORE, openai_client)
+APP_JOB_TASKS = {}
+APP_JOB_WORKER = None
+APP_SHUTTING_DOWN = False
+WORKER_ID = os.environ.get("RAILWAY_REPLICA_ID") or f"worker-{uuid.uuid4().hex[:12]}"
 
 
 def secure_key_match(provided: str | None, expected: str) -> bool:
@@ -130,9 +140,12 @@ SYSTEM_PROMPT = """
 
 SYSTEM_PROMPT = """Ты Atlas — персональный ИИ-ассистент и оркестратор.
 Отвечай на языке пользователя.
-Используй web_search для свежей публичной информации.
-Используй claude_ask, когда пользователь прямо просит спросить Claude или когда независимое второе мнение заметно улучшит сложный анализ. Не вызывай Claude для простых запросов.
-GitHub read tools для чтения; github_replace_text/github_write_file изменяют репозиторий и могут отсутствовать без разрешения записи; если их нет — попроси включить разрешение изменений.
+Тебе передаётся текущий проект и его долговременная память. Не смешивай контекст разных проектов.
+Используй memory_search, когда прошлые решения, предпочтения или текущие задачи могут изменить ответ.
+Используй memory_remember только для устойчивых решений, предпочтений и фактов проекта; не сохраняй секреты.
+Используй web_search только для свежей публичной информации, когда этот инструмент доступен.
+Используй claude_ask, когда пользователь прямо просит Claude или независимое второе мнение заметно улучшит сложный анализ. Не вызывай Claude для простых запросов.
+GitHub read tools предназначены для чтения; github_replace_text/github_write_file изменяют репозиторий и могут отсутствовать без разрешения записи.
 Не утверждай успех при ошибке инструмента.
 После инструментов всегда верни краткий понятный итог."""
 
@@ -230,12 +243,50 @@ TOOLS = [
     },
 ]
 
+TOOLS.extend([
+    {
+        "type": "function",
+        "name": "memory_search",
+        "description": "Найти решения, предпочтения и факты в памяти текущего проекта.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["query", "limit"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "memory_remember",
+        "description": "Сохранить устойчивое решение, предпочтение или факт в памяти текущего проекта. Не сохранять секреты.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string"},
+                "kind": {
+                    "type": "string",
+                    "enum": ["decision", "preference", "fact", "task", "note"],
+                },
+            },
+            "required": ["content", "kind"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+])
+
 _TOOL_DESCRIPTIONS = {
     'github_list_files': 'Показать файлы и папки репозитория AtlasCore.',
     'github_read_file': 'Прочитать указанный диапазон строк текстового файла AtlasCore.',
     'github_replace_text': 'Точечно заменить один уникальный фрагмент текста в файле и создать commit. Использовать для небольших безопасных изменений.',
     'github_write_file': 'Создать новый файл или полностью заменить существующий файл и создать commit. Не использовать для main.py.',
     'claude_ask': 'Попросить Claude дать независимое второе мнение, ревью кода или сложный анализ. Не использовать для простых задач.',
+    'memory_search': 'Найти релевантный контекст в памяти текущего проекта.',
+    'memory_remember': 'Сохранить устойчивый факт в памяти текущего проекта. Не сохранять секреты.',
 }
 for _tool in TOOLS:
     if _tool.get('type') == 'function' and _tool.get('name') in _TOOL_DESCRIPTIONS:
@@ -547,157 +598,379 @@ async def claude_ask(prompt):
         logger.exception("Claude API failed")
         return json.dumps({"ok": False, "error": "claude_request_failed"}, ensure_ascii=False)
 
-async def execute_tool(name, arguments):
-    if name == "github_list_files":
-        return await github_list_files(arguments.get("path", ""))
+async def execute_tool(name, arguments, run_context=None):
+    run_context = run_context or {}
+    project_id = run_context.get("project_id", "project-general")
+    job_id = run_context.get("job_id")
+    started = time.perf_counter()
+    ensure_store()
 
-    if name == "github_read_file":
-        return await github_read_file(
-            arguments["path"],
-            arguments["start_line"],
-            arguments["end_line"],
+    try:
+        if name == "github_list_files":
+            result = await github_list_files(arguments.get("path", ""))
+        elif name == "github_read_file":
+            result = await github_read_file(
+                arguments["path"],
+                arguments["start_line"],
+                arguments["end_line"],
+            )
+        elif name == "github_replace_text":
+            result = await github_replace_text(
+                arguments["path"],
+                arguments["old_text"],
+                arguments["new_text"],
+                arguments["commit_message"],
+            )
+        elif name == "github_write_file":
+            result = await github_write_file(
+                arguments["path"],
+                arguments["content"],
+                arguments["commit_message"],
+            )
+        elif name == "claude_ask":
+            if not BUDGET.allow_claude():
+                result = json.dumps(
+                    {"ok": False, "error": "claude_daily_limit_reached"},
+                    ensure_ascii=False,
+                )
+            else:
+                result = await claude_ask(arguments["prompt"])
+                BUDGET.record_claude(job_id, project_id, CLAUDE_MODEL)
+        elif name == "memory_search":
+            memories = STORE.search_memories(
+                project_id,
+                arguments.get("query", ""),
+                arguments.get("limit", 8),
+            )
+            result = json.dumps({"ok": True, "memories": memories}, ensure_ascii=False)
+        elif name == "memory_remember":
+            memory = STORE.remember(
+                project_id,
+                arguments["content"],
+                arguments.get("kind", "note"),
+            )
+            result = json.dumps(
+                {
+                    "ok": True,
+                    "memory": {
+                        "id": memory.get("id"),
+                        "kind": memory.get("kind"),
+                        "content": memory.get("content"),
+                    },
+                },
+                ensure_ascii=False,
+            )
+        else:
+            result = json.dumps(
+                {"ok": False, "error": "unknown_tool", "tool": name},
+                ensure_ascii=False,
+            )
+    except Exception as exc:
+        STORE.record_action(
+            tool=name,
+            status="error",
+            job_id=job_id,
+            project_id=project_id,
+            detail={"error_type": type(exc).__name__},
+            duration_ms=int((time.perf_counter() - started) * 1000),
         )
+        raise
 
-    if name == "github_replace_text":
-        return await github_replace_text(
-            arguments["path"],
-            arguments["old_text"],
-            arguments["new_text"],
-            arguments["commit_message"],
-        )
-
-    if name == "github_write_file":
-        return await github_write_file(
-            arguments["path"],
-            arguments["content"],
-            arguments["commit_message"],
-        )
-
-    if name == "claude_ask":
-        return await claude_ask(arguments["prompt"])
-
-    return json.dumps(
-        {
-            "ok": False,
-            "error": "unknown_tool",
-            "tool": name,
-        },
-        ensure_ascii=False,
+    parsed = None
+    try:
+        parsed = json.loads(result) if isinstance(result, str) else result
+    except (TypeError, ValueError):
+        pass
+    ok = not isinstance(parsed, dict) or parsed.get("ok", True)
+    STORE.record_action(
+        tool=name,
+        status="success" if ok else "error",
+        job_id=job_id,
+        project_id=project_id,
+        detail={"argument_keys": sorted(arguments.keys())},
+        duration_ms=int((time.perf_counter() - started) * 1000),
     )
-
+    return result
 
 def create_response(**kwargs):
     kwargs.setdefault("max_output_tokens", MAX_OUTPUT_TOKENS)
     return openai_client.responses.create(**kwargs)
 
 
-async def run_atlas(text, previous_response_id=None, allow_writes=True, attachments=None, claude_review=False):
+@dataclass
+class AtlasRunResult:
+    id: str
+    output_text: str
+    model: str
+    route: str
+    usage: dict
+
+
+def ensure_store():
+    if not STORE.initialized:
+        STORE.initialize()
+
+
+def _previous_response_error(exc):
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "previous_response_id",
+            "previous response",
+            "response not found",
+            "conversation",
+        )
+    )
+
+
+def _model_error(exc):
+    status = getattr(exc, "status_code", None)
+    message = str(exc).lower()
+    return status in {400, 403, 404} and any(
+        marker in message for marker in ("model", "access", "not found")
+    )
+
+
+async def _create_with_recovery(request):
+    current = dict(request)
+    for _ in range(3):
+        try:
+            response = await asyncio.to_thread(create_response, **current)
+            return response, current["model"]
+        except Exception as exc:
+            if current.get("previous_response_id") and _previous_response_error(exc):
+                current.pop("previous_response_id", None)
+                continue
+            if current.get("model") != MODEL_ROUTER.fallback_model and _model_error(exc):
+                current["model"] = MODEL_ROUTER.fallback_model
+                continue
+            raise
+    raise RuntimeError("Atlas response recovery exhausted")
+
+
+def _project_instructions(project_id, text):
+    project = STORE.ensure_project(project_id)
+    memory = STORE.memory_context(project_id, text)
+    recent = STORE.list_recent_jobs(project_id, limit=4)
+    history_lines = []
+    for job in recent:
+        payload = job.get("payload") or {}
+        task = str(payload.get("task") or "")[:500]
+        answer = str(job.get("answer") or "")[:700]
+        if task:
+            history_lines.append(f"User: {task}")
+        if answer:
+            history_lines.append(f"Atlas: {answer}")
+    sections = [
+        SYSTEM_PROMPT,
+        f"\nТекущий проект: {project.get('name', project_id)} ({project_id}).",
+    ]
+    if memory:
+        sections.append("\nДолговременная память проекта:\n" + memory)
+    if history_lines:
+        sections.append("\nНедавние завершённые задачи проекта:\n" + "\n".join(history_lines))
+    return "\n".join(sections)
+
+
+async def run_atlas(
+    text,
+    previous_response_id=None,
+    allow_writes=True,
+    attachments=None,
+    claude_review=False,
+    project_id="project-general",
+    job_id=None,
+):
+    ensure_store()
     text = (text or "")[:MAX_USER_INPUT]
     attachments = attachments or []
+    project_id = STORE._project_id(project_id)
+    route = MODEL_ROUTER.select(
+        text,
+        has_attachments=bool(attachments),
+        claude_review=claude_review,
+    )
 
     selected_tools = list(TOOLS) if allow_writes else [
         tool for tool in TOOLS
-        if not (tool.get("type") == "function" and tool.get("name") in {"github_replace_text", "github_write_file"})
+        if not (
+            tool.get("type") == "function"
+            and tool.get("name") in {"github_replace_text", "github_write_file"}
+        )
     ]
     if not ANTHROPIC_API_KEY:
         selected_tools = [
             tool for tool in selected_tools
-            if not (tool.get("type") == "function" and tool.get("name") == "claude_ask")
+            if not (
+                tool.get("type") == "function"
+                and tool.get("name") == "claude_ask"
+            )
         ]
-    selected_tools.append({"type": "web_search"})
+    if route.use_web:
+        selected_tools.append({"type": "web_search"})
 
     if attachments:
         content = [{"type": "input_text", "text": text}]
-        for item in attachments[:4]:
+        for item in attachments[:APP_ATTACHMENT_MAX_COUNT]:
             if (item.media_type or "").startswith("image/"):
                 content.append({"type": "input_image", "image_url": item.data})
             else:
-                content.append({"type": "input_file", "filename": item.name, "file_data": item.data})
+                content.append(
+                    {
+                        "type": "input_file",
+                        "filename": item.name,
+                        "file_data": item.data,
+                    }
+                )
         atlas_input = [{"role": "user", "content": content}]
     else:
         atlas_input = text
 
-    instructions = SYSTEM_PROMPT
+    instructions = _project_instructions(project_id, text)
     if claude_review and ANTHROPIC_API_KEY:
-        instructions += "\nПеред финальным ответом обязательно вызови claude_ask для независимой проверки решения, затем учти замечания Claude."
+        instructions += (
+            "\nПеред финальным ответом обязательно вызови claude_ask для "
+            "независимой проверки решения, затем учти замечания Claude."
+        )
 
+    reservation = await asyncio.to_thread(
+        BUDGET.reserve,
+        job_id=job_id,
+        model=route.model,
+        input_data=atlas_input,
+        instructions=instructions,
+        tools=selected_tools,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        use_web=route.use_web,
+    )
     request = {
-        "model": MODEL,
+        "model": route.model,
         "instructions": instructions,
         "input": atlas_input,
         "tools": selected_tools,
         "tool_choice": "auto",
     }
-
     if previous_response_id:
         request["previous_response_id"] = previous_response_id
 
-    response = await asyncio.to_thread(
-        create_response,
-        **request,
-    )
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_web_calls = 0
+    used_model = route.model
+    run_context = {
+        "project_id": project_id,
+        "job_id": job_id,
+        "route": route.lane,
+    }
 
-    claude_used = False
-    for loop_index in range(MAX_TOOL_LOOPS):
-        tool_calls = [
-            item
-            for item in response.output
-            if getattr(item, "type", None) == "function_call"
-        ]
+    try:
+        response, used_model = await _create_with_recovery(request)
+        input_tokens, output_tokens = response_usage(response)
+        total_input_tokens += input_tokens
+        total_output_tokens += output_tokens
+        total_web_calls += response_web_calls(response)
 
-        if not tool_calls:
-            return response
+        claude_used = False
+        for loop_index in range(MAX_TOOL_LOOPS):
+            tool_calls = [
+                item
+                for item in response.output
+                if getattr(item, "type", None) == "function_call"
+            ]
+            if not tool_calls:
+                break
 
-        outputs = []
-
-        for call in tool_calls:
-            try:
-                if call.name == 'claude_ask' and claude_used:
-                    result = json.dumps({"ok": False, "error": "claude_call_limit_reached"}, ensure_ascii=False)
-                else:
-                    if call.name == 'claude_ask':
-                        claude_used = True
-                    arguments = json.loads(call.arguments)
-
-                    result = await execute_tool(
-                        call.name,
-                        arguments,
+            outputs = []
+            for call in tool_calls:
+                try:
+                    if call.name == "claude_ask" and claude_used:
+                        result = json.dumps(
+                            {"ok": False, "error": "claude_call_limit_reached"},
+                            ensure_ascii=False,
+                        )
+                    else:
+                        if call.name == "claude_ask":
+                            claude_used = True
+                        arguments = json.loads(call.arguments)
+                        result = await execute_tool(
+                            call.name,
+                            arguments,
+                            run_context=run_context,
+                        )
+                except Exception:
+                    logger.exception("Tool execution failed")
+                    result = json.dumps(
+                        {
+                            "ok": False,
+                            "error": "Atlas error",
+                            "details": "Внутренняя ошибка. Попробуйте еще раз.",
+                        },
+                        ensure_ascii=False,
                     )
-
-            except Exception as exc:
-                logger.exception("Tool execution failed")
-
-                result = json.dumps(
+                outputs.append(
                     {
-                        "ok": False,
-                        "error": "Atlas error",
-                        "details": "Внутренняя ошибка. Попробуйте еще раз.",
-                    },
-                    ensure_ascii=False,
+                        "type": "function_call_output",
+                        "call_id": call.call_id,
+                        "output": result,
+                    }
                 )
 
-            outputs.append(
-                {
-                    "type": "function_call_output",
-                    "call_id": call.call_id,
-                    "output": result,
-                }
+            last_loop = loop_index == MAX_TOOL_LOOPS - 1
+            response = await asyncio.to_thread(
+                create_response,
+                model=used_model,
+                instructions=instructions,
+                previous_response_id=response.id,
+                input=outputs,
+                tools=selected_tools,
+                tool_choice="none" if last_loop else "auto",
             )
+            input_tokens, output_tokens = response_usage(response)
+            total_input_tokens += input_tokens
+            total_output_tokens += output_tokens
+            total_web_calls += response_web_calls(response)
 
-        last_loop = loop_index == MAX_TOOL_LOOPS - 1
-
-        response = await asyncio.to_thread(
-            create_response,
-            model=MODEL,
-            instructions=instructions,
-            previous_response_id=response.id,
-            input=outputs,
-            tools=selected_tools,
-            tool_choice="none" if last_loop else "auto",
+        output_text = (response.output_text or "").strip()
+        explicit_memory = re.match(
+            r"^\s*(?:запомни|remember)\b[\s:,-]*(.+)$",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
         )
+        if explicit_memory and explicit_memory.group(1).strip():
+            STORE.remember(project_id, explicit_memory.group(1).strip(), "note")
 
-    return response
+        try:
+            actual_cost = await asyncio.to_thread(
+                BUDGET.complete,
+                reservation,
+                job_id=job_id,
+                project_id=project_id,
+                model=used_model,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                web_calls=total_web_calls,
+            )
+        except Exception:
+            logger.exception("Failed to record Atlas usage")
+            actual_cost = 0.0
 
+        return AtlasRunResult(
+            id=response.id,
+            output_text=output_text,
+            model=used_model,
+            route=route.lane,
+            usage={
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "web_calls": total_web_calls,
+                "cost_usd": round(actual_cost, 6),
+                "estimated_cost_usd": round(reservation.estimated_cost_usd, 6),
+            },
+        )
+    except BaseException:
+        await asyncio.to_thread(BUDGET.release, reservation)
+        raise
 
 def secure_key_match(provided: str | None, expected: str) -> bool:
     return bool(provided) and secrets.compare_digest(provided, expected)
@@ -769,9 +1042,21 @@ mcp_app = mcp_auth_app
 
 @asynccontextmanager
 async def api_lifespan(app: FastAPI):
-    async with mcp.session_manager.run():
-        yield
-
+    global APP_JOB_WORKER, APP_SHUTTING_DOWN
+    ensure_store()
+    APP_SHUTTING_DOWN = False
+    STORE.recover_stale_jobs(stale_after=90)
+    APP_JOB_WORKER = asyncio.create_task(_app_job_worker())
+    try:
+        async with mcp.session_manager.run():
+            yield
+    finally:
+        APP_SHUTTING_DOWN = True
+        if APP_JOB_WORKER:
+            APP_JOB_WORKER.cancel()
+            await asyncio.gather(APP_JOB_WORKER, return_exceptions=True)
+        APP_JOB_WORKER = None
+        STORE.close()
 
 api = FastAPI(
     title="Atlas API",
@@ -818,7 +1103,17 @@ class TaskRequest(BaseModel):
     previous_response_id: str | None = None
     allow_writes: bool = False
     claude_review: bool = False
+    project_id: str = "project-general"
     attachments: list[AppAttachment] = Field(default_factory=list)
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+
+
+class MemoryCreateRequest(BaseModel):
+    content: str
+    kind: str = "note"
 
 
 class AppLoginRequest(BaseModel):
@@ -880,28 +1175,49 @@ def validate_app_task_request(body: TaskRequest):
 
 
 def _prune_app_jobs():
-    now = time.time()
-    for job_id, job in list(APP_JOBS.items()):
-        updated_at = job.get("updated_at") or job.get("created_at") or 0
-        if now - updated_at <= APP_JOB_TTL:
-            continue
-
-        task = APP_JOB_TASKS.get(job_id)
-        if task and not task.done():
-            task.cancel()
-
-        APP_JOB_TASKS.pop(job_id, None)
-        APP_JOBS.pop(job_id, None)
+    ensure_store()
+    STORE.prune_jobs(APP_JOB_RETENTION)
 
 
-async def _run_app_job(job_id: str, body: TaskRequest):
-    job = APP_JOBS.get(job_id)
+def _public_job(job):
     if not job:
-        return
+        return None
+    return {
+        key: job.get(key)
+        for key in (
+            "job_id",
+            "project_id",
+            "status",
+            "answer",
+            "response_id",
+            "meta",
+            "error",
+            "code",
+            "created_at",
+            "updated_at",
+            "started_at",
+            "completed_at",
+            "retry_count",
+        )
+    }
 
-    job["status"] = "running"
-    job["updated_at"] = time.time()
 
+async def _run_app_job(job):
+    job_id = job["job_id"]
+    payload = job.get("payload") or {}
+    body = TaskRequest.model_validate(payload)
+    current_task = asyncio.current_task()
+
+    async def heartbeat():
+        while True:
+            await asyncio.sleep(10)
+            alive = await asyncio.to_thread(STORE.touch_job, job_id, WORKER_ID)
+            if not alive:
+                if current_task and not current_task.done():
+                    current_task.cancel()
+                return
+
+    heartbeat_task = asyncio.create_task(heartbeat())
     try:
         response = await run_atlas(
             body.task,
@@ -909,45 +1225,112 @@ async def _run_app_job(job_id: str, body: TaskRequest):
             allow_writes=body.allow_writes,
             attachments=body.attachments,
             claude_review=body.claude_review,
+            project_id=body.project_id,
+            job_id=job_id,
         )
-        job["status"] = "done"
-        job["answer"] = (response.output_text or "").strip()
-        job["response_id"] = response.id
-        job["updated_at"] = time.time()
+        if await asyncio.to_thread(STORE.is_cancel_requested, job_id):
+            return
+        stored = await asyncio.to_thread(
+            STORE.finish_job,
+            job_id,
+            response.output_text,
+            response.id,
+            {
+                "model": response.model,
+                "route": response.route,
+                "usage": response.usage,
+            },
+        )
+        if stored:
+            await asyncio.to_thread(
+                STORE.update_project_response,
+                body.project_id,
+                response.id,
+            )
     except asyncio.CancelledError:
-        job["status"] = "cancelled"
-        job["error"] = "Задача остановлена."
-        job["updated_at"] = time.time()
+        if not APP_SHUTTING_DOWN and not STORE.is_cancel_requested(job_id):
+            await asyncio.to_thread(
+                STORE.fail_job,
+                job_id,
+                "Задача была остановлена до завершения.",
+                499,
+            )
         raise
+    except BudgetExceeded as exc:
+        await asyncio.to_thread(STORE.fail_job, job_id, str(exc), 429)
     except RateLimitError:
-        job["status"] = "error"
-        job["error"] = "Лимит OpenAI временно исчерпан. Попробуйте позже."
-        job["code"] = 429
-        job["updated_at"] = time.time()
+        await asyncio.to_thread(
+            STORE.fail_job,
+            job_id,
+            "Лимит OpenAI временно исчерпан. Попробуйте позже.",
+            429,
+        )
     except Exception:
         logger.exception("Background app job failed")
-        job["status"] = "error"
-        job["error"] = "Сервер Atlas временно недоступен."
-        job["code"] = 500
-        job["updated_at"] = time.time()
+        await asyncio.to_thread(
+            STORE.fail_job,
+            job_id,
+            "Сервер Atlas временно недоступен.",
+            500,
+        )
     finally:
-        APP_JOB_TASKS.pop(job_id, None)
+        heartbeat_task.cancel()
+        await asyncio.gather(heartbeat_task, return_exceptions=True)
 
+
+async def _app_job_worker():
+    active = set()
+    last_recovery = 0.0
+    try:
+        while True:
+            active = {task for task in active if not task.done()}
+            now = time.monotonic()
+            if now - last_recovery >= 15:
+                await asyncio.to_thread(STORE.recover_stale_jobs, 90)
+                last_recovery = now
+            while len(active) < APP_JOB_MAX_ACTIVE:
+                job = await asyncio.to_thread(STORE.claim_next_job, WORKER_ID)
+                if not job:
+                    break
+                task = asyncio.create_task(_run_app_job(job))
+                APP_JOB_TASKS[job["job_id"]] = task
+                active.add(task)
+
+                def forget(done_task, job_id=job["job_id"]):
+                    APP_JOB_TASKS.pop(job_id, None)
+
+                task.add_done_callback(forget)
+            await asyncio.sleep(0.5)
+    finally:
+        for task in active:
+            task.cancel()
+        if active:
+            await asyncio.gather(*active, return_exceptions=True)
 
 @api.get("/health")
 async def api_health():
+    ensure_store()
     return {
         "ok": True,
         "service": "AtlasCore",
         "process": "alive",
         "config_loaded": True,
+        "storage": {
+            "backend": STORE.backend,
+            "durable": STORE.backend == "postgres",
+        },
+        "router": MODEL_ROUTER.public_config(),
+        "budget": {
+            "daily_limit_usd": BUDGET.daily_limit_usd,
+            "task_limit_usd": BUDGET.task_limit_usd,
+        },
+        "jobs": {"max_active": APP_JOB_MAX_ACTIVE},
         "mcp": {
             "enabled": True,
             "endpoint": "/mcp",
         },
         "private": bool(ALLOWED_USER_IDS),
     }
-
 
 @api.post("/task")
 async def api_task(
@@ -958,37 +1341,35 @@ async def api_task(
     ),
 ):
     verify_api_key(x_atlas_key)
-
+    validate_app_task_request(body)
     try:
         response = await run_atlas(
             body.task,
             body.previous_response_id,
+            allow_writes=body.allow_writes,
+            attachments=body.attachments,
+            claude_review=body.claude_review,
+            project_id=body.project_id,
         )
-
-        answer = (response.output_text or "").strip()
-
+        STORE.update_project_response(body.project_id, response.id)
         return {
             "ok": True,
             "response_id": response.id,
-            "answer": answer,
+            "answer": response.output_text,
+            "meta": {
+                "model": response.model,
+                "route": response.route,
+                "usage": response.usage,
+            },
         }
-
+    except BudgetExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     except RateLimitError:
         logger.warning("OpenAI rate limit reached")
-
-        raise HTTPException(
-            status_code=429,
-            detail="OpenAI API rate limit reached.",
-        )
-
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached.")
     except Exception:
         logger.exception("API task failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error",
-        )
-
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @api.post("/app-login")
 async def app_login(body: AppLoginRequest, response: Response):
@@ -1030,25 +1411,17 @@ async def api_app_jobs(
     verify_app_request(request, x_atlas_key)
     _prune_app_jobs()
     validate_app_task_request(body)
-
-    active_jobs = sum(1 for job in APP_JOBS.values() if job.get('status') in {'queued','running'})
-    if active_jobs >= APP_JOB_MAX_ACTIVE:
+    try:
+        job = await asyncio.to_thread(
+            STORE.create_job,
+            body.model_dump(mode="json"),
+        )
+    except TooManyJobs:
         raise HTTPException(
             status_code=409,
-            detail='Слишком много активных задач. Дождитесь завершения текущих задач.',
+            detail="Слишком много активных задач. Дождитесь завершения текущих задач.",
         )
-
-    job_id = uuid.uuid4().hex
-    now = time.time()
-    APP_JOBS[job_id] = {
-        "job_id": job_id,
-        "status": "queued",
-        "created_at": now,
-        "updated_at": now,
-    }
-    task = asyncio.create_task(_run_app_job(job_id, body))
-    APP_JOB_TASKS[job_id] = task
-    return {"ok": True, "job_id": job_id, "status": "queued"}
+    return {"ok": True, "job_id": job["job_id"], "status": job["status"]}
 
 
 @api.get("/app-jobs/{job_id}")
@@ -1062,11 +1435,10 @@ async def api_app_job_get(
 ):
     verify_app_request(request, x_atlas_key)
     _prune_app_jobs()
-
-    job = APP_JOBS.get(job_id)
+    job = await asyncio.to_thread(STORE.get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return {"ok": True, **job}
+    return {"ok": True, **_public_job(job)}
 
 
 @api.delete("/app-jobs/{job_id}")
@@ -1080,18 +1452,13 @@ async def api_app_job_delete(
 ):
     verify_app_request(request, x_atlas_key)
     _prune_app_jobs()
-
-    job = APP_JOBS.get(job_id)
+    job = await asyncio.to_thread(STORE.cancel_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.get("status") in {"queued", "running"}:
-        task = APP_JOB_TASKS.get(job_id)
-        if task and not task.done():
-            task.cancel()
-        job.update(status="cancelled", error="Задача остановлена.", updated_at=time.time())
-
-    return {"ok": True, **job}
+    task = APP_JOB_TASKS.get(job_id)
+    if task and not task.done():
+        task.cancel()
+    return {"ok": True, **_public_job(job)}
 
 
 @api.post("/app-task")
@@ -1105,7 +1472,6 @@ async def api_app_task(
 ):
     verify_app_request(request, x_atlas_key)
     validate_app_task_request(body)
-
     try:
         response = await run_atlas(
             body.task,
@@ -1113,32 +1479,130 @@ async def api_app_task(
             allow_writes=body.allow_writes,
             attachments=body.attachments,
             claude_review=body.claude_review,
+            project_id=body.project_id,
         )
-
-        answer = (response.output_text or "").strip()
-
+        STORE.update_project_response(body.project_id, response.id)
         return {
             "ok": True,
             "response_id": response.id,
-            "answer": answer,
+            "answer": response.output_text,
+            "meta": {
+                "model": response.model,
+                "route": response.route,
+                "usage": response.usage,
+            },
         }
-
+    except BudgetExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     except RateLimitError:
         logger.warning("OpenAI rate limit reached")
-
-        raise HTTPException(
-            status_code=429,
-            detail="OpenAI API rate limit reached.",
-        )
-
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit reached.")
     except Exception:
         logger.exception("App task failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error",
+
+@api.get("/app-projects")
+async def api_projects(
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    ensure_store()
+    return {"ok": True, "projects": await asyncio.to_thread(STORE.list_projects)}
+
+
+@api.post("/app-projects")
+async def api_project_create(
+    body: ProjectCreateRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    try:
+        project = await asyncio.to_thread(STORE.create_project, body.name)
+    except AtlasStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "project": project}
+
+
+@api.get("/app-projects/{project_id}/memory")
+async def api_project_memory(
+    project_id: str,
+    request: Request,
+    q: str = "",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    memories = await asyncio.to_thread(STORE.search_memories, project_id, q, 30)
+    return {"ok": True, "project_id": project_id, "memories": memories}
+
+
+@api.post("/app-projects/{project_id}/memory")
+async def api_project_memory_create(
+    project_id: str,
+    body: MemoryCreateRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    try:
+        memory = await asyncio.to_thread(
+            STORE.remember,
+            project_id,
+            body.content,
+            body.kind,
         )
+    except AtlasStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "memory": memory}
 
+
+@api.get("/app-projects/{project_id}/history")
+async def api_project_history(
+    project_id: str,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    jobs = await asyncio.to_thread(STORE.list_recent_jobs, project_id, 50)
+    history = []
+    for job in jobs:
+        payload = job.get("payload") or {}
+        history.append(
+            {
+                "job_id": job.get("job_id"),
+                "task": payload.get("task", ""),
+                "allow_writes": bool(payload.get("allow_writes")),
+                "status": job.get("status"),
+                "answer": job.get("answer", ""),
+                "response_id": job.get("response_id"),
+                "created_at": job.get("created_at"),
+                "completed_at": job.get("completed_at"),
+                "meta": job.get("meta", {}),
+            }
+        )
+    return {"ok": True, "project_id": project_id, "history": history}
+
+
+@api.get("/app-actions")
+async def api_actions(
+    request: Request,
+    project_id: str = "project-general",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    actions = await asyncio.to_thread(STORE.list_actions, project_id, 100)
+    return {"ok": True, "project_id": project_id, "actions": actions}
+
+
+@api.get("/app-budget")
+async def api_budget(
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    return {"ok": True, **await asyncio.to_thread(BUDGET.status)}
 
 @api.post("/bridge")
 async def api_bridge(
@@ -1170,6 +1634,9 @@ async def api_bridge(
 
     except HTTPException:
         raise
+
+    except BudgetExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
 
     except RateLimitError:
         logger.warning("OpenAI rate limit reached")
