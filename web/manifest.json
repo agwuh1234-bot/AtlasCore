@@ -1,8 +1,9 @@
 {
   "name": "Atlas",
   "short_name": "Atlas",
-  "start_url": "/app",
-  "scope": "/app",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
   "background_color": "#05060a",
   "theme_color": "#05060a",
