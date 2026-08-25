@@ -75,6 +75,8 @@ APP_JOBS = {}
 APP_JOB_TASKS = {}
 APP_JOB_TTL = 3600
 APP_SESSION_MAX_AGE = 30 * 24 * 3600
+MAX_APP_BODY_BYTES = 24 * 1024 * 1024
+MAX_ACTIVE_APP_JOBS = 3
 
 
 def secure_key_match(provided: str | None, expected: str) -> bool:
