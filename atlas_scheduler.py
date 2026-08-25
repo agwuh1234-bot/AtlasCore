@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 FREQUENCIES = {"once", "daily", "weekly"}
-DEFAULT_TIMEZONE = "Europe/Berlin"
+DEFAULT_TIMEZONE = "Europe/Kyiv"
 
 
 class ScheduleValidationError(ValueError):
