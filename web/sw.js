@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atlas-app-v4';
+const CACHE_NAME = 'atlas-app-v5';
 const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/app.js', '/app/icon.svg'];
 
 self.addEventListener('install', (event) => {
