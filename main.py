@@ -101,21 +101,6 @@ def app_session_token_valid(token):
         return False
 
 
-def app_session_token_valid(token):
-    if not token:
-        return False
-    try:
-        ts, nonce, signature = token.split('.', 2)
-        payload = f'{ts}.{nonce}'
-        expected = hmac.new(ATLAS_APP_KEY.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).hexdigest()
-        if not secrets.compare_digest(signature, expected):
-            return False
-        ts_int = int(ts)
-        now = int(time.time())
-        return ts_int <= now + 300 and 0 <= now - ts_int <= APP_SESSION_MAX_AGE
-    except Exception:
-        return False
-
 
 SYSTEM_PROMPT = """
 Ð¢Ñ Atlas â Ð¿ÐµÑÑÐ¾Ð½Ð°Ð»ÑÐ½ÑÐ¹ ÐÐ-Ð°ÑÑÐ¸ÑÑÐµÐ½Ñ Ð¸ ÑÐ´ÑÐ¾ Ð°Ð²ÑÐ¾Ð¼Ð°ÑÐ¸Ð·Ð°ÑÐ¸Ð¸.
