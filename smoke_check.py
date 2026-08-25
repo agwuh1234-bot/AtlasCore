@@ -58,6 +58,15 @@ def main() -> None:
     requirements = read_text("requirements.txt")
     assert requirements.strip(), "requirements.txt must not be empty"
 
+    manifest = json.loads(read_text("web/manifest.json"))
+    assert manifest.get("display") == "standalone"
+    assert manifest.get("start_url") == "/"
+    assert isinstance(manifest.get("icons"), list) and manifest.get("icons")
+
+    format_css = read_text("web/format.css")
+    assert ".code-block" in format_css
+    assert ".prose-link" in format_css
+
     print("ATLAS_SMOKE_OK")
 
 
