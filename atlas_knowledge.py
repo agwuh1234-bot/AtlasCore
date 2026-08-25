@@ -110,6 +110,14 @@ def plugin_registry() -> list[dict[str, Any]]:
             "requires_confirmation": True,
         },
         {
+            "id": "automations",
+            "name": "Автоматизации",
+            "description": "Безопасные задачи по расписанию с хранением в PostgreSQL.",
+            "status": "connected",
+            "permission": "read-only",
+            "requires_confirmation": False,
+        },
+        {
             "id": "push",
             "name": "Web Push",
             "description": "Фоновые уведомления о завершении задач для установленного PWA.",
