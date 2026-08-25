@@ -182,5 +182,95 @@ class AtlasStoreTests(unittest.TestCase):
         self.assertEqual(self.store.list_files("project-atlas"), [])
 
 
+    def test_memory_normalization_prevents_cosmetic_duplicates(self):
+        first = self.store.remember(
+            "project-atlas",
+            "Use PostgreSQL for durable jobs.",
+            "decision",
+        )
+        duplicate = self.store.remember(
+            "project-atlas",
+            "  use postgresql for durable jobs!  ",
+            "decision",
+        )
+        self.assertEqual(first["id"], duplicate["id"])
+        self.assertEqual(
+            len(self.store.search_memories("project-atlas", "")),
+            1,
+        )
+
+    def test_memory_search_ranks_relevance_and_importance(self):
+        self.store.remember(
+            "project-shopify",
+            "The storefront accent color is blue",
+            "note",
+        )
+        important = self.store.remember(
+            "project-shopify",
+            "Use PostgreSQL for durable Shopify background jobs",
+            "decision",
+        )
+        results = self.store.search_memories(
+            "project-shopify",
+            "durable postgres jobs",
+            5,
+        )
+        self.assertEqual(results[0]["id"], important["id"])
+        self.assertEqual(len(results), 1)
+        self.assertGreater(results[0]["relevance_score"], 0)
+
+    def test_project_context_includes_global_memory(self):
+        self.store.remember(
+            "project-general",
+            "Always answer the user in Russian",
+            "preference",
+        )
+        self.store.remember(
+            "project-atlas",
+            "Atlas uses Railway production",
+            "fact",
+        )
+        context = self.store.memory_context("project-atlas", "Railway")
+        self.assertIn("[project:fact] Atlas uses Railway production", context)
+        self.assertIn("[global:preference] Always answer the user in Russian", context)
+
+    def test_memory_can_be_edited_only_in_its_project(self):
+        memory = self.store.remember(
+            "project-atlas",
+            "Old deployment rule",
+            "decision",
+        )
+        self.assertIsNone(
+            self.store.update_memory(
+                "project-shopify",
+                memory["id"],
+                "New deployment rule",
+                "decision",
+            )
+        )
+        updated = self.store.update_memory(
+            "project-atlas",
+            memory["id"],
+            "New deployment rule",
+            "decision",
+        )
+        self.assertEqual(updated["id"], memory["id"])
+        self.assertEqual(updated["content"], "New deployment rule")
+        self.assertEqual(
+            self.store.search_memories("project-atlas", "Old deployment"),
+            [],
+        )
+
+    def test_memory_health_reports_scope_without_deleting(self):
+        self.store.remember("project-general", "Use Russian", "preference")
+        self.store.remember("project-atlas", "Keep GREEN checkpoints", "decision")
+        health = self.store.memory_health("project-atlas")
+        self.assertEqual(health["total"], 1)
+        self.assertEqual(health["global_total"], 1)
+        self.assertEqual(health["by_kind"]["decision"], 1)
+        self.assertFalse(health["automatic_deletion"])
+        self.assertEqual(health["retrieval"], "ranked-local-and-global")
+
+
 if __name__ == "__main__":
     unittest.main()
