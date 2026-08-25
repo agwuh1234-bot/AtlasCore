@@ -502,7 +502,8 @@ async def run_atlas(text, previous_response_id=None):
                 result = json.dumps(
                     {
                         "ok": False,
-                        "error": str(exc),
+                        "error": "Atlas error",
+                        "details": "Внутренняя ошибка. Попробуйте еще раз.",
                     },
                     ensure_ascii=False,
                 )
