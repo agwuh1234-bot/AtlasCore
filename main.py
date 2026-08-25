@@ -496,7 +496,7 @@ async def run_atlas(text, previous_response_id=None):
                     arguments,
                 )
 
-            except Exception as exc:
+            except Exception:
                 logger.exception("Tool execution failed")
 
                 result = json.dumps(
