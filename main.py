@@ -40,6 +40,8 @@ GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 ATLAS_API_KEY = os.environ["ATLAS_API_KEY"]
 ATLAS_BRIDGE_KEY = os.environ["ATLAS_BRIDGE_KEY"]
 ATLAS_APP_KEY = os.environ["ATLAS_APP_KEY"]
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 
 REPO = "agwuh1234-bot/AtlasCore"
