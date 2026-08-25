@@ -1127,6 +1127,22 @@ class TaskRequest(BaseModel):
     attachments: list[AppAttachment] = Field(default_factory=list)
 
 
+class ScheduleCreateRequest(BaseModel):
+    project_id: str = "project-general"
+    name: str
+    task: str
+    frequency: str
+    timezone: str = "Europe/Berlin"
+    time_local: str = "09:00"
+    weekdays: list[int] = Field(default_factory=list)
+    run_at: str | None = None
+
+
+class ScheduleToggleRequest(BaseModel):
+    project_id: str = "project-general"
+    enabled: bool
+
+
 class PushKeys(BaseModel):
     p256dh: str
     auth: str
@@ -1317,9 +1333,53 @@ async def _run_app_job(job):
         await asyncio.gather(heartbeat_task, return_exceptions=True)
 
 
+async def _enqueue_due_schedules():
+    due = await asyncio.to_thread(
+        STORE.claim_due_schedules,
+        time.time(),
+        WORKER_ID,
+        APP_JOB_MAX_ACTIVE,
+    )
+    for schedule in due:
+        try:
+            job = await asyncio.to_thread(
+                STORE.create_job,
+                {
+                    "task": schedule["task"],
+                    "project_id": schedule["project_id"],
+                    "allow_writes": False,
+                    "claude_review": False,
+                    "attachments": [],
+                    "scheduled_by": schedule["id"],
+                },
+            )
+            await asyncio.to_thread(
+                STORE.finish_schedule_claim,
+                schedule["id"],
+                WORKER_ID,
+                job["job_id"],
+            )
+        except TooManyJobs:
+            await asyncio.to_thread(
+                STORE.retry_schedule_claim,
+                schedule["id"],
+                WORKER_ID,
+                time.time() + 60,
+            )
+        except Exception:
+            logger.exception("Could not enqueue scheduled task")
+            await asyncio.to_thread(
+                STORE.retry_schedule_claim,
+                schedule["id"],
+                WORKER_ID,
+                time.time() + 300,
+            )
+
+
 async def _app_job_worker():
     active = set()
     last_recovery = 0.0
+    last_schedule_check = 0.0
     try:
         while True:
             active = {task for task in active if not task.done()}
@@ -1327,6 +1387,9 @@ async def _app_job_worker():
             if now - last_recovery >= 15:
                 await asyncio.to_thread(STORE.recover_stale_jobs, 90)
                 last_recovery = now
+            if now - last_schedule_check >= 5:
+                await _enqueue_due_schedules()
+                last_schedule_check = now
             while len(active) < APP_JOB_MAX_ACTIVE:
                 job = await asyncio.to_thread(STORE.claim_next_job, WORKER_ID)
                 if not job:
@@ -1645,6 +1708,77 @@ async def api_project_history(
             }
         )
     return {"ok": True, "project_id": project_id, "history": history}
+
+
+@api.get("/app-schedules")
+async def api_schedules(
+    request: Request,
+    project_id: str = "project-general",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    schedules = await asyncio.to_thread(STORE.list_schedules, project_id)
+    return {"ok": True, "project_id": STORE._project_id(project_id), "schedules": schedules}
+
+
+@api.post("/app-schedules")
+async def api_schedule_create(
+    body: ScheduleCreateRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    try:
+        schedule = await asyncio.to_thread(
+            STORE.create_schedule,
+            body.project_id,
+            name=body.name,
+            task=body.task,
+            frequency=body.frequency,
+            timezone_name=body.timezone,
+            time_local=body.time_local,
+            weekdays=body.weekdays,
+            run_at=body.run_at,
+        )
+    except (AtlasStoreError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "schedule": schedule}
+
+
+@api.patch("/app-schedules/{schedule_id}")
+async def api_schedule_toggle(
+    schedule_id: str,
+    body: ScheduleToggleRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    try:
+        schedule = await asyncio.to_thread(
+            STORE.set_schedule_enabled,
+            body.project_id,
+            schedule_id,
+            body.enabled,
+        )
+    except (AtlasStoreError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"ok": True, "schedule": schedule}
+
+
+@api.delete("/app-schedules/{schedule_id}")
+async def api_schedule_delete(
+    schedule_id: str,
+    request: Request,
+    project_id: str = "project-general",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    deleted = await asyncio.to_thread(STORE.delete_schedule, project_id, schedule_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return {"ok": True, "deleted": True, "schedule_id": schedule_id}
 
 
 @api.get("/app-files")
