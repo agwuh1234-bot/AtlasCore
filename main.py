@@ -823,6 +823,7 @@ class TaskRequest(BaseModel):
     task: str
     previous_response_id: str | None = None
     allow_writes: bool = False
+    claude_review: bool = False
     attachments: list[AppAttachment] = []
 
 
