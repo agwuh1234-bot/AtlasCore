@@ -212,11 +212,12 @@ async def github_list_files(path=""):
     return json.dumps({"ok": True, "items": items}, ensure_ascii=False)
 
 
-async def get_github_file(path):
+async def get_github_file(path, ref=None):
     url = f"https://api.github.com/repos/{REPO}/contents/{path}"
+    params = {"ref": ref} if ref else None
 
     async with httpx.AsyncClient(timeout=20) as client:
-        return await client.get(url, headers=github_headers())
+        return await client.get(url, headers=github_headers(), params=params)
 
 
 async def github_read_file(path, start_line, end_line):
