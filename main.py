@@ -538,6 +538,10 @@ async def run_atlas(text, previous_response_id=None):
     return response
 
 
+def secure_key_match(provided: str | None, expected: str) -> bool:
+    return bool(provided) and secrets.compare_digest(provided, expected)
+
+
 # ---------------- MCP BRIDGE ----------------
 
 mcp = FastMCP(
