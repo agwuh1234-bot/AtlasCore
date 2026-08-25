@@ -859,7 +859,7 @@ class AppLoginRequest(BaseModel):
 
 
 def app_cookie_valid(request: Request) -> bool:
-    return secure_key_match(request.cookies.get("atlas_app_session"), app_session_token())
+    return app_session_token_valid(request.cookies.get("atlas_app_session"))
 
 
 def verify_api_key(x_atlas_key: str | None):
