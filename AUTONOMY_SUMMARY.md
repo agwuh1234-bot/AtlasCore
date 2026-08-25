@@ -1,0 +1,3 @@
+# Summary
+
+Atlas now has a branch-contained autonomous execution foundation: concurrent dependency graphs, retries, durable PostgreSQL checkpoints, restart recovery, browser/verification/approval workers, encrypted browser-session support, and a FastAPI-loop-safe runtime. The integration is deliberately gated before production. The next meaningful evidence is CI on a PR, not more unvalidated production edits.
