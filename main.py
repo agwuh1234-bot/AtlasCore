@@ -655,9 +655,13 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
     else:
         atlas_input = text
 
+    instructions = SYSTEM_PROMPT
+    if claude_review and ANTHROPIC_API_KEY:
+        instructions += "\nПеред финальным ответом обязательно вызови claude_ask для независимой проверки решения, затем учти замечания Claude."
+
     request = {
         "model": MODEL,
-        "instructions": SYSTEM_PROMPT,
+        "instructions": instructions,
         "input": atlas_input,
         "tools": selected_tools,
         "tool_choice": "auto",
