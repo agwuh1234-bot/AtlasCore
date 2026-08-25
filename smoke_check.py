@@ -23,7 +23,7 @@ def main() -> None:
     assert main_py.exists(), "main.py must exist"
     main_text = main_py.read_text(encoding="utf-8")
     ast.parse(main_text, filename="main.py")
-    for module_name in ("atlas_store.py", "atlas_router.py", "atlas_knowledge.py", "atlas_push.py"):
+    for module_name in ("atlas_store.py", "atlas_router.py", "atlas_knowledge.py", "atlas_push.py", "atlas_scheduler.py"):
         module_text = read_text(module_name)
         ast.parse(module_text, filename=module_name)
     assert len(main_text) > 30000, f"main.py text too short: {len(main_text)} <= 30000"
@@ -42,6 +42,9 @@ def main() -> None:
         '@api.get("/app-plugins")',
         '@api.get("/app-files")',
         '@api.get("/app-push/config")',
+        '@api.get("/app-schedules")',
+        '@api.post("/app-schedules")',
+        '@api.patch("/app-schedules/{schedule_id}")',
         '@api.post("/app-push/subscribe")',
         '@api.post("/app-push/test")',
         '@api.get("/app-files/{file_id}")',
@@ -75,7 +78,7 @@ def main() -> None:
     assert ".project-switcher" in projects_css
 
     shell_js = read_text("web/shell.js")
-    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions", "/app-files", "/app-system-status", "/app-permissions"]:
+    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions", "/app-files", "/app-schedules", "loadSchedules", "/app-system-status", "/app-permissions"]:
         assert needle in shell_js, f"web/shell.js missing required text: {needle}"
 
     shell_css = read_text("web/shell.css")
