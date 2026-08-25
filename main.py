@@ -82,7 +82,7 @@ def secure_key_match(provided: str | None, expected: str) -> bool:
 
 
 def app_session_token() -> str:
-    ts = str(int(time.time())); nonce = secrets.token_urlsafe(16); payload = f'{ts}.{nonce}'; signature = hmac.new(ATLAS_APP_KEY.encode('utf-8'),payload.encode('utf-8'),hashlib.sha256).hexdigest(); return f'{payload}.{signature}'
+    ts=str(int(time.time())); nonce=secrets.token_urlsafe(16); payload=f'{ts}.{nonce}'; signature=hmac.new(ATLAS_APP_KEY.encode('utf-8'),payload.encode('utf-8'),hashlib.sha256).hexdigest(); return f'{payload}.{signature}'
 
 
 def app_session_token_valid(token):
