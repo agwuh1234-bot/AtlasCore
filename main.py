@@ -78,7 +78,7 @@ APP_JOB_MAX_ACTIVE = 3
 APP_SESSION_MAX_AGE = 30 * 24 * 3600
 APP_ATTACHMENT_MAX_COUNT = 4
 APP_ATTACHMENT_MAX_DATA_CHARS = 7_000_000
-MAX_APP_BODY_BYTES = 24 * 1024 * 1024
+MAX_APP_BODY_BYTES = 32 * 1024 * 1024
 
 
 def secure_key_match(provided: str | None, expected: str) -> bool:
