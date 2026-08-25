@@ -677,6 +677,51 @@ async def api_task(
         )
 
 
+@api.post("/bridge")
+async def api_bridge(
+    request: Request,
+    x_atlas_key: str | None = Header(
+        default=None,
+        alias="X-Atlas-Key",
+    ),
+):
+    verify_api_key(x_atlas_key)
+
+    try:
+        task = (await request.body()).decode("utf-8").strip()
+
+        if not task:
+            raise HTTPException(
+                status_code=400,
+                detail="Empty task",
+            )
+
+        response = await run_atlas(task)
+        answer = (response.output_text or "").strip()
+
+        return {
+            "ok": True,
+            "response_id": response.id,
+            "answer": answer,
+        }
+
+    except RateLimitError:
+        logger.warning("OpenAI rate limit reached")
+
+        raise HTTPException(
+            status_code=429,
+            detail="OpenAI API rate limit reached.",
+        )
+
+    except Exception:
+        logger.exception("Bridge task failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        )
+
+
 # MCP Streamable HTTP endpoint:
 # https://YOUR-RAILWAY-DOMAIN/mcp
 api.mount("/mcp", mcp_app)
