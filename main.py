@@ -763,6 +763,7 @@ async def api_bridge(
 # MCP Streamable HTTP endpoint:
 # https://YOUR-RAILWAY-DOMAIN/mcp
 api.mount("/mcp", mcp_app)
+api.mount("/app", StaticFiles(directory="web"), name="app")
 
 
 # ---------------- TELEGRAM ----------------
