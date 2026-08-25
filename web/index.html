@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#05070a">
+  <meta name="theme-color" content="#07090d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Atlas">
@@ -17,83 +17,25 @@
   <link rel="stylesheet" href="/app/format.css">
   <link rel="stylesheet" href="/app/shell.css">
   <link rel="stylesheet" href="/app/schedules.css">
+  <link rel="stylesheet" href="/app/polish.css">
   <title>Atlas</title>
 </head>
 <body>
   <div class="app app-shell" data-active-tab="chat">
     <header class="topbar">
-      <div>
-        <div class="brand">Atlas</div>
-        <div class="presence"><span class="dot"></span><span id="serviceStatus">offline</span></div>
-      </div>
+      <div><div class="brand">Atlas</div><div class="presence"><span class="dot"></span><span id="serviceStatus">offline</span></div></div>
       <div class="topbar-actions">
         <button id="installBtn" class="ghost-btn" type="button">Установить</button>
         <button id="newChatBtn" class="ghost-btn" type="button">Новый чат</button>
-        <button id="settingsBtn" class="ghost-btn" type="button">⚙</button>
+        <button id="settingsBtn" class="ghost-btn" type="button" aria-label="Настройки">⚙</button>
       </div>
     </header>
-
-    <div id="loginCard" class="modal-bg">
-      <div class="modal">
-        <h1>Atlas</h1>
-        <p>Введите ключ приложения, чтобы продолжить.</p>
-        <label for="passwordInput">Ключ приложения</label>
-        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Введите ключ">
-        <button id="loginBtn" type="button">Войти</button>
-        <div id="loginError" aria-live="polite"></div>
-      </div>
-    </div>
-
-    <div id="installCard" class="modal-bg hidden">
-      <div class="modal">
-        <h2>Установить Atlas</h2>
-        <p>На iPhone: нажмите «Поделиться» → «На экран Домой», оставьте «Открывать как веб-приложение» включённым и нажмите «Добавить».</p>
-        <button id="closeInstallBtn" type="button">Понятно</button>
-      </div>
-    </div>
-
-    <div id="settingsCard" class="modal-bg hidden">
-      <div class="modal">
-        <h2>Настройки</h2>
-        <button id="notificationBtn" type="button">Включить уведомления</button>
-        <button id='voiceOutputBtn' type='button'>Озвучивание: выкл</button>
-        <p id='voiceHint'>Atlas может автоматически озвучивать свои ответы.</p>
-        <button id="exportChatBtn" type="button">Экспортировать чат</button>
-        <button id="clearChatBtn" type="button">Очистить историю</button>
-        <button id="logoutBtn" type="button">Выйти</button>
-        <button id="closeSettingsBtn" type="button">Закрыть</button>
-        <p>Кнопка ✎ разрешает изменения только для следующей команды.</p>
-      </div>
-    </div>
-
-    <section id="chatCard" class="chat-card hidden">
-      <div id="chatList" class="chat-list" aria-live="polite"></div>
-    </section>
-
-    <footer id="composerWrap" class="composer-wrap hidden">
-      <div id="attachmentBar" class="attachment-bar hidden"></div>
-      <form id="composer" class="composer">
-        <button id="attachBtn" type="button" class="icon-btn" aria-label="Добавить файл">＋</button>
-        <input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" hidden>
-        <button id="voiceBtn" type="button" class="icon-btn" aria-label="Голосовой ввод">🎤</button>
-        <button id="writeModeBtn" type="button" class="icon-btn" aria-label="Разрешить изменения" title="Разрешить изменения для следующей команды">✎</button>
-        <button id="claudeReviewBtn" type="button" class="icon-btn" aria-label='Проверить через Claude' title='Claude проверит следующую команду'>◈</button>
-        <textarea id="messageInput" rows="1" placeholder="Напиши Atlas…"></textarea>
-        <button id="stopBtn" type="button" class='icon-btn hidden' aria-label='Остановить задачу' title='Остановить текущую задачу'>■</button>
-        <button id="sendBtn" class="send" type="submit">→</button>
-      </form>
-    </footer>
+    <div id="loginCard" class="modal-bg"><div class="modal"><h1>Atlas</h1><p>Введите ключ приложения, чтобы продолжить.</p><label for="passwordInput">Ключ приложения</label><input id="passwordInput" type="password" autocomplete="current-password" placeholder="Введите ключ"><button id="loginBtn" type="button">Войти</button><div id="loginError" aria-live="polite"></div></div></div>
+    <div id="installCard" class="modal-bg hidden"><div class="modal"><h2>Установить Atlas</h2><p>На iPhone: нажмите «Поделиться» → «На экран Домой», оставьте «Открывать как веб-приложение» включённым и нажмите «Добавить».</p><button id="closeInstallBtn" type="button">Понятно</button></div></div>
+    <div id="settingsCard" class="modal-bg hidden"><div class="modal"><h2>Настройки</h2><button id="notificationBtn" type="button">Включить уведомления</button><button id="voiceOutputBtn" type="button">Озвучивание: выкл</button><p id="voiceHint">Atlas может автоматически озвучивать свои ответы.</p><button id="exportChatBtn" type="button">Экспортировать чат</button><button id="clearChatBtn" type="button">Очистить историю</button><button id="logoutBtn" type="button">Выйти</button><button id="closeSettingsBtn" type="button">Закрыть</button><p>Developer Mode включён: Atlas может вносить изменения в AtlasCore. Опасные действия требуют отдельного подтверждения.</p></div></div>
+    <section id="chatCard" class="chat-card hidden"><div id="chatList" class="chat-list" aria-live="polite"></div></section>
+    <footer id="composerWrap" class="composer-wrap hidden"><div id="attachmentBar" class="attachment-bar hidden"></div><form id="composer" class="composer"><button id="attachBtn" type="button" class="icon-btn" aria-label="Добавить файл">＋</button><input id="fileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" hidden><button id="voiceBtn" type="button" class="icon-btn" aria-label="Голосовой ввод">🎤</button><button id="writeModeBtn" type="button" class="icon-btn" aria-label="Developer Mode" title="Developer Mode включён">✎</button><button id="claudeReviewBtn" type="button" class="icon-btn" aria-label="Проверить через Claude" title="Claude проверит следующую команду">◈</button><textarea id="messageInput" rows="1" placeholder="Напиши Atlas…"></textarea><button id="stopBtn" type="button" class="icon-btn hidden" aria-label="Остановить задачу" title="Остановить текущую задачу">■</button><button id="sendBtn" class="send" type="submit" aria-label="Отправить">→</button></form></footer>
   </div>
-  <script src="/app/projects.js" defer></script>
-  <script src="/app/files.js" defer></script>
-  <script src="/app/recovery.js" defer></script>
-  <script src="/app/control_center.js" defer></script>
-  <script src="/app/push.js" defer></script>
-  <script src="/app/app.js" defer></script>
-  <script src="/app/ux.js" defer></script>
-  <script src="/app/status.js" defer></script>
-  <script src="/app/format.js" defer></script>
-  <script src="/app/shell.js" defer></script>
-  <script src="/app/schedules.js" defer></script>
+  <script src="/app/projects.js" defer></script><script src="/app/files.js" defer></script><script src="/app/recovery.js" defer></script><script src="/app/control_center.js" defer></script><script src="/app/push.js" defer></script><script src="/app/app.js" defer></script><script src="/app/ux.js" defer></script><script src="/app/status.js" defer></script><script src="/app/format.js" defer></script><script src="/app/shell.js" defer></script><script src="/app/schedules.js" defer></script>
 </body>
 </html>
