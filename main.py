@@ -872,6 +872,13 @@ def verify_user_access(user_id: int | None):
 
     return user_id in ALLOWED_USER_IDS
 
+def validate_app_task_request(body: TaskRequest):
+    if len(body.attachments) > APP_ATTACHMENT_MAX_COUNT:
+        raise HTTPException(status_code=400, detail='Too many attachments')
+    for attachment in body.attachments:
+        if len(attachment.data or '') > APP_ATTACHMENT_MAX_DATA_CHARS:
+            raise HTTPException(status_code=413, detail='Attachment too large')
+
 
 def _prune_app_jobs():
     now = time.time()
