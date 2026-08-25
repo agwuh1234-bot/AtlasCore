@@ -561,7 +561,7 @@ async def atlas_task(
 
     atlas_key must match the ATLAS_API_KEY environment variable.
     """
-    if atlas_key != ATLAS_API_KEY:
+    if not secure_key_match(atlas_key, ATLAS_API_KEY):
         return {
             "ok": False,
             "error": "Unauthorized",
