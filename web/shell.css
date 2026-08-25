@@ -682,3 +682,66 @@ select {
     width: 100%;
   }
 }
+
+
+.approval-card.pending {
+  border-color: rgba(255, 190, 74, .32);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .14);
+}
+
+.approval-card.resolved {
+  opacity: .86;
+}
+
+.approval-empty {
+  border-color: rgba(93, 226, 178, .2);
+}
+
+.approval-detail {
+  color: #d8dce6;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+
+.approval-preview {
+  background: #070b10;
+  border: 1px solid var(--atlas-border);
+  border-radius: 12px;
+  color: #bfc7d5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: 9px;
+  max-height: 110px;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.approval-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-top: 12px;
+}
+
+.approval-actions .panel-action {
+  min-height: 44px;
+}
+
+.approval-approve {
+  background: #2d9f78 !important;
+}
+
+.status-pill.neutral {
+  background: rgba(255, 255, 255, .07);
+  color: var(--muted);
+}
+
+@media (max-width: 360px) {
+  .approval-actions {
+    grid-template-columns: 1fr;
+  }
+}
