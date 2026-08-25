@@ -35,6 +35,12 @@ class AtlasStoreTests(unittest.TestCase):
         self.assertEqual(len(self.store.search_memories("project-atlas", "durable")), 1)
         self.assertEqual(len(self.store.search_memories("project-shopify", "durable")), 1)
 
+    def test_memory_can_be_deleted_only_from_its_project(self):
+        memory = self.store.remember("project-atlas", "Keep this", "decision")
+        self.assertFalse(self.store.delete_memory("project-shopify", memory["id"]))
+        self.assertTrue(self.store.delete_memory("project-atlas", memory["id"]))
+        self.assertEqual(self.store.search_memories("project-atlas", "Keep"), [])
+
     def test_job_survives_store_reopen(self):
         created = self.store.create_job(
             {
