@@ -134,3 +134,74 @@ def plugin_registry() -> list[dict[str, Any]]:
             "requires_confirmation": False,
         },
     ]
+
+
+PERMISSION_LEVELS = [
+    {
+        "id": "read",
+        "name": "Чтение",
+        "description": "Поиск, диагностика и чтение данных выполняются автоматически.",
+        "automatic": True,
+        "confirmation": False,
+    },
+    {
+        "id": "safe",
+        "name": "Безопасные действия",
+        "description": "Анализ, черновики, память и проверки без публикации выполняются автоматически.",
+        "automatic": True,
+        "confirmation": False,
+    },
+    {
+        "id": "write",
+        "name": "Изменение данных",
+        "description": "Код, товары, цены, файлы и настройки требуют разового разрешения ✎.",
+        "automatic": False,
+        "confirmation": True,
+    },
+    {
+        "id": "dangerous",
+        "name": "Опасные и дорогие действия",
+        "description": "Удаление, публикация, платежи и дорогие операции всегда требуют явного подтверждения.",
+        "automatic": False,
+        "confirmation": True,
+    },
+]
+
+
+def system_registry(storage_backend: str) -> list[dict[str, Any]]:
+    """Return non-secret capability diagnostics for the mobile control center."""
+    railway_connected = bool(
+        os.environ.get("RAILWAY_ENVIRONMENT_ID")
+        or os.environ.get("RAILWAY_PROJECT_ID")
+        or os.environ.get("RAILWAY_SERVICE_ID")
+    )
+    checks = [
+        ("openai", "OpenAI", bool(os.environ.get("OPENAI_API_KEY")), "Основной интеллект и Model Router"),
+        ("github", "GitHub", bool(os.environ.get("GITHUB_TOKEN")), "Репозиторий AtlasCore"),
+        ("postgres", "PostgreSQL", storage_backend == "postgres", "Задачи, проекты и долговременная память"),
+        ("web", "Web", True, "Свежая публичная информация через Model Router"),
+        ("railway", "Railway", railway_connected, "Production-среда AtlasCore"),
+        ("claude", "Claude", bool(os.environ.get("ANTHROPIC_API_KEY")), "Независимая проверка сложных решений"),
+        (
+            "shopify",
+            "Shopify",
+            bool(os.environ.get("SHOPIFY_STORE_DOMAIN") and os.environ.get("SHOPIFY_ADMIN_ACCESS_TOKEN")),
+            "Admin API; Shopify Brain работает и без подключения",
+        ),
+        (
+            "make",
+            "Make",
+            bool(os.environ.get("MAKE_API_KEY") or os.environ.get("MAKE_WEBHOOK_URL")),
+            "Сценарии автоматизации",
+        ),
+    ]
+    return [
+        {
+            "id": item_id,
+            "name": name,
+            "status": "healthy" if connected else "not-configured",
+            "connected": connected,
+            "detail": detail,
+        }
+        for item_id, name, connected, detail in checks
+    ]
