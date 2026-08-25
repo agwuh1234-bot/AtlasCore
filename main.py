@@ -285,11 +285,15 @@ async def github_write_file(path, content, commit_message):
         "content": base64.b64encode(
             content.encode("utf-8")
         ).decode("utf-8"),
-        "branch": "main",
+        "branch": GITHUB_BRANCH,
     }
 
     async with httpx.AsyncClient(timeout=30) as client:
-        current = await client.get(url, headers=github_headers())
+        current = await client.get(
+            url,
+            headers=github_headers(),
+            params={"ref": GITHUB_BRANCH},
+        )
 
         if current.status_code == 200:
             payload["sha"] = current.json()["sha"]
@@ -308,6 +312,17 @@ async def github_write_file(path, content, commit_message):
             url,
             headers=github_headers(),
             json=payload,
+        )
+
+    if response.status_code == 409:
+        return json.dumps(
+            {
+                "ok": False,
+                "status": 409,
+                "step": "write",
+                "error": "conflict",
+            },
+            ensure_ascii=False,
         )
 
     if response.status_code not in (200, 201):
