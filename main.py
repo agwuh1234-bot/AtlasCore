@@ -807,6 +807,8 @@ async def api_app_task(
         response = await run_atlas(
             body.task,
             body.previous_response_id,
+            allow_writes=body.allow_writes,
+            attachments=body.attachments,
         )
 
         answer = (response.output_text or "").strip()
