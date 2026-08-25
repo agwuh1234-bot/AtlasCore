@@ -297,7 +297,8 @@ select {
   z-index: 25;
 }
 
-.bottom-tabs.hidden {
+.bottom-tabs.hidden,
+.keyboard-open .bottom-tabs {
   display: none;
 }
 
