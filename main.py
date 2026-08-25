@@ -735,6 +735,28 @@ async def api_task(
         )
 
 
+@api.post("/app-login")
+async def app_login(body: AppLoginRequest, response: Response):
+    if not secure_key_match(body.key, ATLAS_APP_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    response.set_cookie(
+        "atlas_app_session",
+        app_session_token(),
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=31536000,
+        path="/",
+    )
+    return {"ok": True}
+
+
+@api.get("/app-session")
+async def app_session(request: Request):
+    return {"authenticated": app_cookie_valid(request)}
+
+
 @api.post("/app-task")
 async def api_app_task(
     body: TaskRequest,
