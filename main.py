@@ -179,6 +179,20 @@ TOOLS = [
         },
         "strict": True,
     },
+    {
+        "type": "function",
+        "name": "claude_ask",
+        "description": "Попросить Claude сделать второе мнение, ревью кода или сложный анализ.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string"},
+            },
+            "required": ["prompt"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
 ]
 
 
