@@ -555,20 +555,9 @@ mcp = FastMCP(
 @mcp.tool()
 async def atlas_task(
     task: str,
-    atlas_key: str,
     previous_response_id: str | None = None,
 ) -> dict:
-    """
-    Send a task to Atlas.
-
-    atlas_key must match the ATLAS_API_KEY environment variable.
-    """
-    if not secure_key_match(atlas_key, ATLAS_API_KEY):
-        return {
-            "ok": False,
-            "error": "Unauthorized",
-        }
-
+    """Send a task to Atlas. HTTP Bearer auth is enforced before tool calls."""
     try:
         response = await run_atlas(
             task,
