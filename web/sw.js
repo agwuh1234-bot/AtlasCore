@@ -1,5 +1,5 @@
-const CACHE_NAME = 'atlas-app-v1';
-const ASSETS = ['/app', '/app/manifest.json', '/app/sw.js', '/app/styles.css'];
+const CACHE_NAME = 'atlas-app-v2';
+const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/app.js', '/app/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
@@ -30,7 +30,7 @@ self.addEventListener('fetch', (event) => {
     } catch {
       const cached = await caches.match(event.request);
       if (cached) return cached;
-      if (event.request.mode === 'navigate') return caches.match('/app');
+      if (event.request.mode === 'navigate') return caches.match('/');
       throw new Error('offline');
     }
   })());
