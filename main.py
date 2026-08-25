@@ -714,7 +714,7 @@ async def run_atlas(text, previous_response_id=None, allow_writes=True, attachme
         for call in tool_calls:
             try:
                 if call.name == 'claude_ask' and claude_used:
-                    result = json.dumps({"ok": false, "error": "claude_call_limit_reached"}, ensure_ascii=False)
+                    result = json.dumps({"ok": False, "error": "claude_call_limit_reached"}, ensure_ascii=False)
                 else:
                     if call.name == 'claude_ask':
                         claude_used = True
