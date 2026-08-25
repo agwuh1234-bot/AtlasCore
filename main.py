@@ -471,14 +471,32 @@ def create_response(**kwargs):
     return openai_client.responses.create(**kwargs)
 
 
-async def run_atlas(text, previous_response_id=None):
+async def run_atlas(text, previous_response_id=None, allow_writes=True, attachments=None):
     text = (text or "")[:MAX_USER_INPUT]
+    attachments = attachments or []
+
+    selected_tools = list(TOOLS) if allow_writes else [
+        tool for tool in TOOLS
+        if not (tool.get("type") == "function" and tool.get("name") in {"github_replace_text", "github_write_file"})
+    ]
+    selected_tools.append({"type": "web_search"})
+
+    if attachments:
+        content = [{"type": "input_text", "text": text}]
+        for item in attachments[:4]:
+            if (item.media_type or "").startswith("image/"):
+                content.append({"type": "input_image", "image_url": item.data})
+            else:
+                content.append({"type": "input_file", "filename": item.name, "file_data": item.data})
+        atlas_input = [{"role": "user", "content": content}]
+    else:
+        atlas_input = text
 
     request = {
         "model": MODEL,
         "instructions": SYSTEM_PROMPT,
-        "input": text,
-        "tools": TOOLS,
+        "input": atlas_input,
+        "tools": selected_tools,
         "tool_choice": "auto",
     }
 
