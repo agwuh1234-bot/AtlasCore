@@ -23,7 +23,7 @@ def main() -> None:
     assert main_py.exists(), "main.py must exist"
     main_text = main_py.read_text(encoding="utf-8")
     ast.parse(main_text, filename="main.py")
-    for module_name in ("atlas_store.py", "atlas_router.py"):
+    for module_name in ("atlas_store.py", "atlas_router.py", "atlas_knowledge.py"):
         module_text = read_text(module_name)
         ast.parse(module_text, filename=module_name)
     assert len(main_text) > 30000, f"main.py text too short: {len(main_text)} <= 30000"
@@ -39,12 +39,15 @@ def main() -> None:
         "async def _app_job_worker",
         '@api.get("/app-projects")',
         '@api.get("/app-budget")',
+        '@api.get("/app-plugins")',
+        '@api.delete("/app-projects/{project_id}/memory/{memory_id}")',
+        "SHOPIFY_PLAYBOOK",
         "MODEL_ROUTER",
     ]:
         assert needle in main_text, f"main.py missing required text: {needle}"
 
     index_text = read_text("web/index.html")
-    for needle in ["messageInput", "sendBtn", "stopBtn", "/app/projects.js", "/app/projects.css", "/app/recovery.js", "/app/app.js", "/app/ux.js", "/app/status.js", "/app/format.js"]:
+    for needle in ["messageInput", "sendBtn", "stopBtn", "/app/projects.js", "/app/projects.css", "/app/recovery.js", "/app/app.js", "/app/ux.js", "/app/status.js", "/app/format.js", "/app/shell.js", "/app/shell.css"]:
         assert needle in index_text, f"web/index.html missing required text: {needle}"
 
     app_js = read_text("web/app.js")
@@ -59,6 +62,14 @@ def main() -> None:
     projects_css = read_text("web/projects.css")
     assert ".project-switcher" in projects_css
 
+    shell_js = read_text("web/shell.js")
+    for needle in ["bottomTabs", "visualViewport", "panel-memory", "/app-plugins", "/app-actions"]:
+        assert needle in shell_js, f"web/shell.js missing required text: {needle}"
+
+    shell_css = read_text("web/shell.css")
+    for needle in ["position: fixed", ".bottom-tabs", ".workspace-panel", ".composer-tools"]:
+        assert needle in shell_css, f"web/shell.css missing required text: {needle}"
+
     recovery_js = read_text("web/recovery.js")
     assert len(recovery_js) > 1000, f"web/recovery.js text too short: {len(recovery_js)} <= 1000"
     assert recovery_js != "test", "web/recovery.js must not be exactly 'test'"
@@ -66,7 +77,7 @@ def main() -> None:
         assert needle in recovery_js, f"web/recovery.js missing required text: {needle}"
 
     sw_js = read_text("web/sw.js")
-    for needle in ["projects.js", "projects.css", "recovery.js", "app.js", "ux.js", "status.js", "format.js"]:
+    for needle in ["projects.js", "projects.css", "recovery.js", "app.js", "ux.js", "status.js", "format.js", "shell.js", "shell.css"]:
         assert needle in sw_js, f"web/sw.js missing required asset: {needle}"
 
     format_js = read_text("web/format.js")
