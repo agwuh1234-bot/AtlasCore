@@ -973,7 +973,7 @@ class AtlasStore:
         name: str,
         task: str,
         frequency: str,
-        timezone_name: str = "Europe/Berlin",
+        timezone_name: str = "Europe/Kyiv",
         time_local: str = "09:00",
         weekdays: list[int] | None = None,
         run_at: str | None = None,
