@@ -592,7 +592,28 @@ async def atlas_task(
         }
 
 
-mcp_app = mcp.streamable_http_app()
+raw_mcp_app = mcp.streamable_http_app()
+
+async def mcp_auth_app(scope, receive, send):
+    if scope.get("type") == "http":
+        headers = dict(scope.get("headers", []))
+        auth_header = headers.get(b"authorization", b"").decode("latin-1")
+        if not secure_key_match(auth_header, f"Bearer {ATLAS_API_KEY}"):
+            body = b'{"detail":"Unauthorized"}'
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"www-authenticate", b"Bearer"),
+                    (b"content-length", str(len(body)).encode("ascii")),
+                ],
+            })
+            await send({"type": "http.response.body", "body": body})
+            return
+    await raw_mcp_app(scope, receive, send)
+
+mcp_app = mcp_auth_app
 
 
 @asynccontextmanager
