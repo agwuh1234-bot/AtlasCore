@@ -620,6 +620,11 @@ api = FastAPI(
 )
 
 
+@api.get("/", include_in_schema=False)
+async def atlas_app():
+    return FileResponse("web/index.html")
+
+
 class TaskRequest(BaseModel):
     task: str
     previous_response_id: str | None = None
