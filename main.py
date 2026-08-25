@@ -632,9 +632,17 @@ async def atlas_app():
     return FileResponse("web/index.html")
 
 
+class AppAttachment(BaseModel):
+    name: str
+    media_type: str
+    data: str
+
+
 class TaskRequest(BaseModel):
     task: str
     previous_response_id: str | None = None
+    allow_writes: bool = False
+    attachments: list[AppAttachment] = []
 
 
 class AppLoginRequest(BaseModel):
