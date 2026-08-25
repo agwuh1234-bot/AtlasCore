@@ -1,5 +1,5 @@
-const CACHE_NAME = 'atlas-app-v5';
-const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/app.js', '/app/icon.svg'];
+const CACHE_NAME = 'atlas-app-v6';
+const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/app.js', '/app/recovery.js', '/app/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
