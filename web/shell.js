@@ -16,7 +16,7 @@
     ['memory', '◉', 'Память'],
     ['files', '▤', 'Файлы'],
     ['auto', '◷', 'Авто'],
-    ['actions', '✓', 'Действия'],
+    ['actions', '✓', 'Контроль'],
     ['plugins', '◇', 'Плагины'],
   ];
 
@@ -125,6 +125,11 @@
       const iconNode = node('span', 'tab-icon', icon);
       const labelNode = node('span', 'tab-label', label);
       button.append(iconNode, labelNode);
+      if (id === 'actions') {
+        const badge = node('span', 'tab-badge hidden', '');
+        badge.dataset.approvalBadge = '1';
+        button.append(badge);
+      }
       button.addEventListener('click', () => activateTab(id));
       nav.append(button);
     }
@@ -679,6 +684,40 @@
     }
   }
 
+  function approvalStatusLabel(status) {
+    return ({
+      pending: 'Ждёт решения',
+      executing: 'Выполняется',
+      approved: 'Разрешено',
+      rejected: 'Отклонено',
+      expired: 'Истекло',
+      error: 'Ошибка',
+    })[status] || String(status || 'Неизвестно');
+  }
+
+  async function decideApproval(approval, decision, button) {
+    const approve = decision === 'approve';
+    const question = approve
+      ? 'Разрешить это изменение? Оно будет выполнено один раз.'
+      : 'Отклонить это изменение?';
+    if (!window.confirm(question + '\n\n' + String(approval.summary || ''))) return;
+    button.disabled = true;
+    try {
+      await request(
+        '/app-approvals/' + encodeURIComponent(approval.id) + '/' + decision,
+        {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({project_id: projectId()}),
+        }
+      );
+      await loadActions();
+    } catch (error) {
+      window.alert(error.message);
+      button.disabled = false;
+    }
+  }
+
   async function loadActions() {
     const inner = panelInner('actions');
     if (!inner) return;
@@ -686,11 +725,108 @@
     const refresh = node('button', 'panel-action secondary', 'Обновить');
     refresh.type = 'button';
     refresh.addEventListener('click', loadActions);
-    inner.append(heading('Действия', 'Реальные вызовы инструментов — без скрытых рассуждений.', refresh));
+    inner.append(heading(
+      'Контроль',
+      'Конкретные разрешения на запись и журнал реально выполненных действий.',
+      refresh
+    ));
 
     try {
-      const data = await request('/app-actions?project_id=' + encodeURIComponent(projectId()));
-      const actions = data.actions || [];
+      const [approvalData, actionData] = await Promise.all([
+        request('/app-approvals?project_id=' + encodeURIComponent(projectId())),
+        request('/app-actions?project_id=' + encodeURIComponent(projectId())),
+      ]);
+      const approvals = approvalData.approvals || [];
+      const pending = approvals.filter((item) => item.status === 'pending');
+      setApprovalBadge(pending.length);
+      const resolved = approvals.filter((item) => item.status !== 'pending').slice(0, 8);
+      const actions = actionData.actions || [];
+
+      const pendingTitle = node(
+        'h3',
+        'panel-section-title',
+        'Ожидают подтверждения' + (pending.length ? ' · ' + pending.length : '')
+      );
+      inner.append(pendingTitle);
+
+      if (!pending.length) {
+        const safe = node('article', 'atlas-card approval-empty');
+        safe.append(node('h3', '', 'Очередь пуста'));
+        safe.append(node('p', '', 'Ни одно изменение сейчас не ждёт разрешения.'));
+        inner.append(safe);
+      }
+
+      for (const approval of pending) {
+        const card = node('article', 'atlas-card approval-card pending');
+        const row = node('div', 'atlas-card-row');
+        const copy = node('div');
+        copy.append(node('h3', '', String(approval.summary || approval.tool || 'Изменение')));
+        copy.append(node(
+          'p',
+          '',
+          approval.path ? 'Файл: ' + String(approval.path) : 'Изменение данных'
+        ));
+        row.append(
+          copy,
+          node('span', 'status-pill confirmation', approvalStatusLabel(approval.status))
+        );
+        card.append(row);
+
+        if (approval.commit_message) {
+          card.append(node('div', 'approval-detail', 'Commit: ' + String(approval.commit_message)));
+        }
+        if (approval.preview) {
+          const preview = node('div', 'approval-preview', String(approval.preview));
+          card.append(preview);
+        }
+        const meta = node('div', 'action-meta');
+        const created = formatDate(approval.created_at);
+        const expires = formatDate(approval.expires_at);
+        if (created) meta.append(node('span', '', 'Создано: ' + created));
+        if (expires) meta.append(node('span', '', 'До: ' + expires));
+        if (approval.change_size) {
+          meta.append(node('span', '', String(approval.change_size) + ' символов'));
+        }
+        card.append(meta);
+
+        const controls = node('div', 'approval-actions');
+        const approve = node('button', 'panel-action approval-approve', 'Разрешить');
+        approve.type = 'button';
+        approve.addEventListener('click', () => decideApproval(approval, 'approve', approve));
+        const reject = node('button', 'panel-action secondary danger-btn', 'Отклонить');
+        reject.type = 'button';
+        reject.addEventListener('click', () => decideApproval(approval, 'reject', reject));
+        controls.append(approve, reject);
+        card.append(controls);
+        inner.append(card);
+      }
+
+      if (resolved.length) {
+        inner.append(node('h3', 'panel-section-title', 'Последние решения'));
+        for (const approval of resolved) {
+          const card = node('article', 'atlas-card approval-card resolved');
+          const row = node('div', 'atlas-card-row');
+          const copy = node('div');
+          copy.append(node('h3', '', String(approval.summary || approval.tool || 'Изменение')));
+          const detail = approval.error
+            ? 'Ошибка: ' + String(approval.error)
+            : (approval.path ? String(approval.path) : 'Без пути');
+          copy.append(node('p', '', detail));
+          const statusClass = approval.status === 'approved'
+            ? 'connected'
+            : (approval.status === 'error' ? 'disconnected' : 'neutral');
+          row.append(
+            copy,
+            node('span', 'status-pill ' + statusClass, approvalStatusLabel(approval.status))
+          );
+          card.append(row);
+          const date = formatDate(approval.resolved_at || approval.updated_at);
+          if (date) card.append(node('div', 'action-meta', date));
+          inner.append(card);
+        }
+      }
+
+      inner.append(node('h3', 'panel-section-title', 'Журнал инструментов'));
       if (!actions.length) {
         inner.append(node('div', 'empty-state', 'В этом проекте действий пока нет.'));
         return;
@@ -700,8 +836,23 @@
         const row = node('div', 'atlas-card-row');
         const copy = node('div');
         copy.append(node('h3', '', String(action.tool || 'Atlas')));
-        copy.append(node('p', '', action.status === 'success' ? 'Выполнено' : 'Ошибка'));
-        row.append(copy, node('span', 'status-pill ' + (action.status === 'success' ? 'connected' : 'disconnected'), String(action.status || 'unknown')));
+        const actionText = ({
+          success: 'Выполнено',
+          error: 'Ошибка',
+          approval_required: 'Запрошено разрешение',
+          rejected: 'Отклонено пользователем',
+        })[action.status] || String(action.status || 'Неизвестно');
+        copy.append(node('p', '', actionText));
+        const good = action.status === 'success';
+        const waiting = action.status === 'approval_required';
+        row.append(
+          copy,
+          node(
+            'span',
+            'status-pill ' + (good ? 'connected' : (waiting ? 'confirmation' : 'disconnected')),
+            String(action.status || 'unknown')
+          )
+        );
         card.append(row);
         const meta = node('div', 'action-meta');
         const date = formatDate(action.created_at);
@@ -813,6 +964,31 @@
     if (id === 'plugins') return loadPlugins();
   }
 
+  function setApprovalBadge(count) {
+    const badge = document.querySelector('[data-approval-badge="1"]');
+    if (!badge) return;
+    const value = Math.max(0, Number(count || 0));
+    badge.textContent = value > 9 ? '9+' : String(value || '');
+    badge.classList.toggle('hidden', value === 0);
+  }
+
+  async function refreshApprovalBadge() {
+    if (!authenticated) {
+      setApprovalBadge(0);
+      return;
+    }
+    try {
+      const data = await request(
+        '/app-approvals?project_id=' + encodeURIComponent(projectId())
+      );
+      setApprovalBadge((data.approvals || []).filter(
+        (item) => item.status === 'pending'
+      ).length);
+    } catch {
+      setApprovalBadge(0);
+    }
+  }
+
   async function detectSession() {
     try {
       const data = await request('/app-session');
@@ -822,6 +998,7 @@
     }
     syncAuthUi();
     activateTab(authenticated ? activeTab : 'chat', false);
+    if (authenticated) refreshApprovalBadge();
   }
 
   function init() {

@@ -48,6 +48,10 @@ def main() -> None:
         '@api.post("/app-push/subscribe")',
         '@api.post("/app-push/test")',
         '@api.get("/app-files/{file_id}")',
+        '@api.get("/app-approvals")',
+        '@api.post("/app-approvals/{approval_id}/approve")',
+        '@api.post("/app-approvals/{approval_id}/reject")',
+        "WRITE_APPROVAL_TOOLS",
         '@api.delete("/app-files/{file_id}")',
         '@api.get("/app-system-status")',
         '@api.get("/app-permissions")',
@@ -80,7 +84,7 @@ def main() -> None:
     assert ".project-switcher" in projects_css
 
     shell_js = read_text("web/shell.js")
-    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions", "/app-files", "/app-schedules", "loadSchedules", "/memory-health", "memory_scope", "/app-system-status", "/app-permissions"]:
+    for needle in ["bottomTabs", "visualViewport", "workspacePanels", "/app-plugins", "/app-actions", "/app-files", "/app-schedules", "loadSchedules", "/memory-health", "memory_scope", "/app-approvals", "decideApproval", "/app-system-status", "/app-permissions"]:
         assert needle in shell_js, f"web/shell.js missing required text: {needle}"
 
     shell_css = read_text("web/shell.css")

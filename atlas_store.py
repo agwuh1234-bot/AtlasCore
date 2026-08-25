@@ -222,6 +222,26 @@ class AtlasStore:
                 created_at DOUBLE PRECISION NOT NULL
             )
             """,
+            """
+            CREATE TABLE IF NOT EXISTS atlas_approvals (
+                id TEXT PRIMARY KEY,
+                fingerprint TEXT NOT NULL,
+                job_id TEXT,
+                project_id TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                arguments_json TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                risk_level TEXT NOT NULL,
+                status TEXT NOT NULL,
+                result_json TEXT,
+                error TEXT,
+                claimed_by TEXT,
+                expires_at DOUBLE PRECISION NOT NULL,
+                created_at DOUBLE PRECISION NOT NULL,
+                updated_at DOUBLE PRECISION NOT NULL,
+                resolved_at DOUBLE PRECISION
+            )
+            """,
             "CREATE INDEX IF NOT EXISTS atlas_jobs_status_idx ON atlas_jobs(status, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_jobs_project_idx ON atlas_jobs(project_id, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_memories_project_idx ON atlas_memories(project_id, updated_at)",
@@ -230,6 +250,8 @@ class AtlasStore:
             "CREATE INDEX IF NOT EXISTS atlas_schedules_due_idx ON atlas_schedules(enabled, next_run_at)",
             "CREATE INDEX IF NOT EXISTS atlas_usage_day_idx ON atlas_usage(day, created_at)",
             "CREATE INDEX IF NOT EXISTS atlas_actions_project_idx ON atlas_actions(project_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS atlas_approvals_project_idx ON atlas_approvals(project_id, status, created_at)",
+            "CREATE INDEX IF NOT EXISTS atlas_approvals_fingerprint_idx ON atlas_approvals(fingerprint, status)",
         ]
 
         with self._connection(immediate=True) as conn:
@@ -1671,3 +1693,266 @@ class AtlasStore:
             item["detail"] = self._loads(item.pop("detail_json", None), {})
             result.append(item)
         return result
+
+
+    @staticmethod
+    def _approval_item(row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        item = dict(row)
+        item["arguments"] = AtlasStore._loads(item.pop("arguments_json", None), {})
+        item["result"] = AtlasStore._loads(item.pop("result_json", None), None)
+        return item
+
+    def request_approval(
+        self,
+        *,
+        tool: str,
+        arguments: dict[str, Any],
+        summary: str,
+        job_id: str | None = None,
+        project_id: str | None = None,
+        risk_level: str = "write",
+        ttl_seconds: int = 72 * 3600,
+    ) -> dict[str, Any]:
+        project_id = self._project_id(project_id)
+        clean_tool = (tool or "").strip()[:100]
+        clean_summary = " ".join((summary or "").split())[:500]
+        clean_risk = re.sub(r"[^a-z0-9_-]", "-", (risk_level or "write").lower())[:32]
+        arguments_json = json.dumps(
+            arguments or {},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if not clean_tool or not clean_summary:
+            raise AtlasStoreError("Approval tool and summary are required")
+        if len(arguments_json) > 500_000:
+            raise AtlasStoreError("Action is too large for safe approval")
+        fingerprint = hashlib.sha256(
+            f"{job_id or ''}\0{project_id}\0{clean_tool}\0{arguments_json}".encode("utf-8")
+        ).hexdigest()
+        now = time.time()
+        expires_at = now + max(300, min(int(ttl_seconds), 7 * 24 * 3600))
+        approval_id = f"approval-{uuid.uuid4().hex[:24]}"
+        with self._connection(immediate=True) as conn:
+            self._advisory_lock(conn, 4_210_103)
+            row = self._execute(
+                conn,
+                """
+                SELECT * FROM atlas_approvals
+                WHERE fingerprint = ? AND status IN ('pending', 'executing')
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (fingerprint,),
+            ).fetchone()
+            if row is not None:
+                return self._approval_item(row) or {}
+            self._execute(
+                conn,
+                """
+                INSERT INTO atlas_approvals(
+                    id, fingerprint, job_id, project_id, tool, arguments_json,
+                    summary, risk_level, status, expires_at, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                """,
+                (
+                    approval_id,
+                    fingerprint,
+                    job_id,
+                    project_id,
+                    clean_tool,
+                    arguments_json,
+                    clean_summary,
+                    clean_risk or "write",
+                    expires_at,
+                    now,
+                    now,
+                ),
+            )
+            row = self._execute(
+                conn,
+                "SELECT * FROM atlas_approvals WHERE id = ?",
+                (approval_id,),
+            ).fetchone()
+        return self._approval_item(row) or {}
+
+    def get_approval(
+        self,
+        project_id: str | None,
+        approval_id: str,
+    ) -> dict[str, Any] | None:
+        project_id = self._project_id(project_id)
+        approval_id = (approval_id or "").strip()[:100]
+        with self._connection() as conn:
+            row = self._execute(
+                conn,
+                "SELECT * FROM atlas_approvals WHERE id = ? AND project_id = ?",
+                (approval_id, project_id),
+            ).fetchone()
+        return self._approval_item(row)
+
+    def list_approvals(
+        self,
+        project_id: str | None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        project_id = self._project_id(project_id)
+        limit = max(1, min(int(limit), 200))
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            self._execute(
+                conn,
+                """
+                UPDATE atlas_approvals
+                SET status = 'expired', updated_at = ?, resolved_at = ?
+                WHERE project_id = ? AND status = 'pending' AND expires_at <= ?
+                """,
+                (now, now, project_id, now),
+            )
+            rows = self._execute(
+                conn,
+                """
+                SELECT * FROM atlas_approvals
+                WHERE project_id = ?
+                ORDER BY
+                    CASE status
+                        WHEN 'pending' THEN 0
+                        WHEN 'executing' THEN 1
+                        ELSE 2
+                    END,
+                    created_at DESC
+                LIMIT ?
+                """,
+                (project_id, limit),
+            ).fetchall()
+        return [self._approval_item(row) or {} for row in rows]
+
+    def claim_approval(
+        self,
+        project_id: str | None,
+        approval_id: str,
+        worker_id: str,
+    ) -> dict[str, Any] | None:
+        project_id = self._project_id(project_id)
+        approval_id = (approval_id or "").strip()[:100]
+        worker_id = (worker_id or "").strip()[:100]
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            self._advisory_lock(conn, 4_210_103)
+            row = self._execute(
+                conn,
+                "SELECT * FROM atlas_approvals WHERE id = ? AND project_id = ?",
+                (approval_id, project_id),
+            ).fetchone()
+            if row is None:
+                return None
+            item = dict(row)
+            if item.get("status") != "pending":
+                return None
+            if float(item.get("expires_at") or 0) <= now:
+                self._execute(
+                    conn,
+                    """
+                    UPDATE atlas_approvals
+                    SET status = 'expired', updated_at = ?, resolved_at = ?
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (now, now, approval_id, project_id),
+                )
+                return None
+            self._execute(
+                conn,
+                """
+                UPDATE atlas_approvals
+                SET status = 'executing', claimed_by = ?, updated_at = ?
+                WHERE id = ? AND project_id = ? AND status = 'pending'
+                """,
+                (worker_id, now, approval_id, project_id),
+            )
+            row = self._execute(
+                conn,
+                "SELECT * FROM atlas_approvals WHERE id = ? AND project_id = ?",
+                (approval_id, project_id),
+            ).fetchone()
+        return self._approval_item(row)
+
+    def complete_approval(
+        self,
+        project_id: str | None,
+        approval_id: str,
+        worker_id: str,
+        result: Any,
+    ) -> bool:
+        project_id = self._project_id(project_id)
+        result_json = json.dumps(result, ensure_ascii=False)[:100_000]
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                """
+                UPDATE atlas_approvals
+                SET status = 'approved', result_json = ?, error = NULL,
+                    updated_at = ?, resolved_at = ?
+                WHERE id = ? AND project_id = ? AND status = 'executing'
+                    AND claimed_by = ?
+                """,
+                (
+                    result_json,
+                    now,
+                    now,
+                    approval_id,
+                    project_id,
+                    worker_id,
+                ),
+            )
+        return cursor.rowcount == 1
+
+    def fail_approval(
+        self,
+        project_id: str | None,
+        approval_id: str,
+        worker_id: str,
+        error: str,
+    ) -> bool:
+        project_id = self._project_id(project_id)
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                """
+                UPDATE atlas_approvals
+                SET status = 'error', error = ?, updated_at = ?, resolved_at = ?
+                WHERE id = ? AND project_id = ? AND status = 'executing'
+                    AND claimed_by = ?
+                """,
+                (
+                    (error or "Action failed")[:1000],
+                    now,
+                    now,
+                    approval_id,
+                    project_id,
+                    worker_id,
+                ),
+            )
+        return cursor.rowcount == 1
+
+    def reject_approval(
+        self,
+        project_id: str | None,
+        approval_id: str,
+    ) -> bool:
+        project_id = self._project_id(project_id)
+        now = time.time()
+        with self._connection(immediate=True) as conn:
+            cursor = self._execute(
+                conn,
+                """
+                UPDATE atlas_approvals
+                SET status = 'rejected', updated_at = ?, resolved_at = ?
+                WHERE id = ? AND project_id = ? AND status = 'pending'
+                """,
+                (now, now, approval_id, project_id),
+            )
+        return cursor.rowcount == 1

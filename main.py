@@ -100,6 +100,7 @@ BUDGET = BudgetController(STORE, openai_client)
 APP_JOB_TASKS = {}
 APP_JOB_WORKER = None
 APP_SHUTTING_DOWN = False
+WRITE_APPROVAL_TOOLS = {"github_replace_text", "github_write_file"}
 WORKER_ID = os.environ.get("RAILWAY_REPLICA_ID") or f"worker-{uuid.uuid4().hex[:12]}"
 
 
@@ -610,6 +611,74 @@ async def claude_ask(prompt):
         logger.exception("Claude API failed")
         return json.dumps({"ok": False, "error": "claude_request_failed"}, ensure_ascii=False)
 
+def _approval_summary(name: str, arguments: dict) -> str:
+    path = str(arguments.get("path") or "репозиторий")[:240]
+    commit_message = " ".join(
+        str(arguments.get("commit_message") or "").split()
+    )[:180]
+    label = {
+        "github_replace_text": "Точечно изменить файл",
+        "github_write_file": "Создать или заменить файл",
+    }.get(name, "Изменить данные")
+    return f"{label}: {path}" + (f" — {commit_message}" if commit_message else "")
+
+
+def _public_approval(item: dict | None) -> dict | None:
+    if not item:
+        return None
+    arguments = item.get("arguments") or {}
+    raw_result = item.get("result")
+    safe_result = None
+    if isinstance(raw_result, dict):
+        safe_result = {
+            key: raw_result.get(key)
+            for key in ("ok", "commit_sha", "sha", "path", "error", "status")
+            if key in raw_result
+        }
+    preview_source = (
+        arguments.get("new_text")
+        if item.get("tool") == "github_replace_text"
+        else arguments.get("content")
+    )
+    preview = " ".join(str(preview_source or "").split())[:280]
+    return {
+        "id": item.get("id"),
+        "job_id": item.get("job_id"),
+        "project_id": item.get("project_id"),
+        "tool": item.get("tool"),
+        "summary": item.get("summary"),
+        "risk_level": item.get("risk_level"),
+        "status": item.get("status"),
+        "path": str(arguments.get("path") or "")[:500],
+        "commit_message": str(arguments.get("commit_message") or "")[:500],
+        "preview": preview,
+        "change_size": len(str(preview_source or "")),
+        "result": safe_result,
+        "error": item.get("error"),
+        "expires_at": item.get("expires_at"),
+        "created_at": item.get("created_at"),
+        "updated_at": item.get("updated_at"),
+        "resolved_at": item.get("resolved_at"),
+    }
+
+
+async def _execute_approved_write_tool(name: str, arguments: dict) -> str:
+    if name == "github_replace_text":
+        return await github_replace_text(
+            arguments["path"],
+            arguments["old_text"],
+            arguments["new_text"],
+            arguments["commit_message"],
+        )
+    if name == "github_write_file":
+        return await github_write_file(
+            arguments["path"],
+            arguments["content"],
+            arguments["commit_message"],
+        )
+    raise AtlasStoreError("Tool is not allowed by the approval executor")
+
+
 async def execute_tool(name, arguments, run_context=None):
     run_context = run_context or {}
     project_id = run_context.get("project_id", "project-general")
@@ -626,18 +695,29 @@ async def execute_tool(name, arguments, run_context=None):
                 arguments["start_line"],
                 arguments["end_line"],
             )
-        elif name == "github_replace_text":
-            result = await github_replace_text(
-                arguments["path"],
-                arguments["old_text"],
-                arguments["new_text"],
-                arguments["commit_message"],
+        elif name in WRITE_APPROVAL_TOOLS:
+            approval = STORE.request_approval(
+                tool=name,
+                arguments=arguments,
+                summary=_approval_summary(name, arguments),
+                job_id=job_id,
+                project_id=project_id,
+                risk_level="write",
             )
-        elif name == "github_write_file":
-            result = await github_write_file(
-                arguments["path"],
-                arguments["content"],
-                arguments["commit_message"],
+            result = json.dumps(
+                {
+                    "ok": False,
+                    "executed": False,
+                    "approval_required": True,
+                    "approval_id": approval.get("id"),
+                    "summary": approval.get("summary"),
+                    "expires_at": approval.get("expires_at"),
+                    "message": (
+                        "Изменение не выполнено. Оно ожидает подтверждения "
+                        "во вкладке «Контроль»."
+                    ),
+                },
+                ensure_ascii=False,
             )
         elif name == "claude_ask":
             if not BUDGET.allow_claude():
@@ -711,9 +791,14 @@ async def execute_tool(name, arguments, run_context=None):
     except (TypeError, ValueError):
         pass
     ok = not isinstance(parsed, dict) or parsed.get("ok", True)
+    action_status = (
+        "approval_required"
+        if isinstance(parsed, dict) and parsed.get("approval_required")
+        else ("success" if ok else "error")
+    )
     STORE.record_action(
         tool=name,
-        status="success" if ok else "error",
+        status=action_status,
         job_id=job_id,
         project_id=project_id,
         detail={"argument_keys": sorted(arguments.keys())},
@@ -1158,6 +1243,10 @@ class ScheduleCreateRequest(BaseModel):
 class ScheduleToggleRequest(BaseModel):
     project_id: str = "project-general"
     enabled: bool
+
+
+class ApprovalDecisionRequest(BaseModel):
+    project_id: str = "project-general"
 
 
 class PushKeys(BaseModel):
@@ -1881,6 +1970,176 @@ async def api_actions(
     verify_app_request(request, x_atlas_key)
     actions = await asyncio.to_thread(STORE.list_actions, project_id, 100)
     return {"ok": True, "project_id": project_id, "actions": actions}
+
+
+@api.get("/app-approvals")
+async def api_approvals(
+    request: Request,
+    project_id: str = "project-general",
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    approvals = await asyncio.to_thread(STORE.list_approvals, project_id, 100)
+    return {
+        "ok": True,
+        "project_id": STORE._project_id(project_id),
+        "approvals": [_public_approval(item) for item in approvals],
+    }
+
+
+@api.post("/app-approvals/{approval_id}/approve")
+async def api_approval_approve(
+    approval_id: str,
+    body: ApprovalDecisionRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    worker_id = f"approval-{uuid.uuid4().hex[:16]}"
+    approval = await asyncio.to_thread(
+        STORE.claim_approval,
+        body.project_id,
+        approval_id,
+        worker_id,
+    )
+    if approval is None:
+        current = await asyncio.to_thread(
+            STORE.get_approval,
+            body.project_id,
+            approval_id,
+        )
+        if current is None:
+            raise HTTPException(status_code=404, detail="Approval not found")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Approval is already {current.get('status')}",
+        )
+    if approval.get("tool") not in WRITE_APPROVAL_TOOLS:
+        await asyncio.to_thread(
+            STORE.fail_approval,
+            body.project_id,
+            approval_id,
+            worker_id,
+            "Tool is not allowed",
+        )
+        raise HTTPException(status_code=400, detail="Tool is not allowed")
+
+    started = time.perf_counter()
+    try:
+        raw_result = await _execute_approved_write_tool(
+            str(approval["tool"]),
+            dict(approval.get("arguments") or {}),
+        )
+        try:
+            parsed_result = json.loads(raw_result)
+        except (TypeError, ValueError):
+            parsed_result = {"ok": True, "result": str(raw_result)[:4000]}
+        if isinstance(parsed_result, dict) and not parsed_result.get("ok", True):
+            error = str(parsed_result.get("error") or "Approved action failed")
+            await asyncio.to_thread(
+                STORE.fail_approval,
+                body.project_id,
+                approval_id,
+                worker_id,
+                error,
+            )
+            await asyncio.to_thread(
+                STORE.record_action,
+                tool=str(approval["tool"]),
+                status="error",
+                job_id=approval.get("job_id"),
+                project_id=body.project_id,
+                detail={"approval_id": approval_id, "approved": True},
+                duration_ms=int((time.perf_counter() - started) * 1000),
+            )
+            raise HTTPException(status_code=502, detail=error)
+        completed = await asyncio.to_thread(
+            STORE.complete_approval,
+            body.project_id,
+            approval_id,
+            worker_id,
+            parsed_result,
+        )
+        if not completed:
+            raise HTTPException(status_code=409, detail="Approval state changed")
+        await asyncio.to_thread(
+            STORE.record_action,
+            tool=str(approval["tool"]),
+            status="success",
+            job_id=approval.get("job_id"),
+            project_id=body.project_id,
+            detail={"approval_id": approval_id, "approved": True},
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await asyncio.to_thread(
+            STORE.fail_approval,
+            body.project_id,
+            approval_id,
+            worker_id,
+            type(exc).__name__,
+        )
+        await asyncio.to_thread(
+            STORE.record_action,
+            tool=str(approval.get("tool") or "approval"),
+            status="error",
+            job_id=approval.get("job_id"),
+            project_id=body.project_id,
+            detail={"approval_id": approval_id, "approved": True},
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+        logger.exception("Approved action failed")
+        raise HTTPException(status_code=502, detail="Approved action failed")
+
+    current = await asyncio.to_thread(
+        STORE.get_approval,
+        body.project_id,
+        approval_id,
+    )
+    return {"ok": True, "approval": _public_approval(current)}
+
+
+@api.post("/app-approvals/{approval_id}/reject")
+async def api_approval_reject(
+    approval_id: str,
+    body: ApprovalDecisionRequest,
+    request: Request,
+    x_atlas_key: str | None = Header(default=None, alias="X-Atlas-Key"),
+):
+    verify_app_request(request, x_atlas_key)
+    current = await asyncio.to_thread(
+        STORE.get_approval,
+        body.project_id,
+        approval_id,
+    )
+    if current is None:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    rejected = await asyncio.to_thread(
+        STORE.reject_approval,
+        body.project_id,
+        approval_id,
+    )
+    if not rejected:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Approval is already {current.get('status')}",
+        )
+    await asyncio.to_thread(
+        STORE.record_action,
+        tool=str(current.get("tool") or "approval"),
+        status="rejected",
+        job_id=current.get("job_id"),
+        project_id=body.project_id,
+        detail={"approval_id": approval_id},
+    )
+    updated = await asyncio.to_thread(
+        STORE.get_approval,
+        body.project_id,
+        approval_id,
+    )
+    return {"ok": True, "approval": _public_approval(updated)}
 
 
 @api.get("/app-plugins")
