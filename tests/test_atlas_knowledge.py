@@ -51,6 +51,7 @@ class AtlasKnowledgeTests(unittest.TestCase):
             self.assertTrue(registry["shopify"]["requires_confirmation"])
             self.assertEqual(registry["memory"]["status"], "connected")
             self.assertEqual(registry["files"]["status"], "connected")
+            self.assertEqual(registry["push"]["status"], "available")
             self.assertTrue(registry["files"]["requires_confirmation"])
         finally:
             if old_domain is not None:
