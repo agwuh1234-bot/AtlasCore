@@ -258,12 +258,12 @@ async def get_github_file(path, ref=None):
         return await client.get(url, headers=github_headers(), params=params)
 
 
-async def claude_ask(prompt):
+async def ask_claude(prompt: str):
     if not ANTHROPIC_API_KEY:
-        return json.dumps({"ok": False, "error": "claude_not_configured"}, ensure_ascii=False)
+        return json.dumps({"ok": False, "error": "Claude API key is not configured"}, ensure_ascii=False)
 
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -273,58 +273,22 @@ async def claude_ask(prompt):
                 },
                 json={
                     "model": CLAUDE_MODEL,
-                    "max_tokens": 1800,
-                    "messages": [{"role": "user", "content": (prompt or "")[:12000]}],
+                    "max_tokens": 1200,
+                    "system": "Ты Claude внутри Atlas. Дай независимое, полезное второе мнение. Отвечай на языке запроса.",
+                    "messages": [{"role": "user", "content": prompt}],
                 },
             )
-
-        if response.status_code != 200:
-            return json.dumps(
-                {"ok": False, "error": "claude_api_error", "status": response.status_code},
-                ensure_ascii=False,
+            response.raise_for_status()
+            data = response.json()
+            text = "\n".join(
+                block.get("text", "")
+                for block in data.get("content", [])
+                if block.get("type") == "text"
             )
-
-        data = response.json()
-        answer = "\n".join(
-            block.get("text", "")
-            for block in data.get("content", [])
-            if block.get("type") == "text"
-        )
-        return json.dumps(
-            {"ok": True, "model": data.get("model", CLAUDE_MODEL), "answer": answer},
-            ensure_ascii=False,
-        )
+            return json.dumps({"ok": True, "model": CLAUDE_MODEL, "answer": text}, ensure_ascii=False)
     except Exception:
-        logger.exception("Claude API failed")
-        return json.dumps({"ok": False, "error": "claude_request_failed"}, ensure_ascii=False)
-
-
-async def claude_ask(prompt):
-    if not ANTHROPIC_API_KEY:
-        return json.dumps({"ok": False, "error": "claude_not_configured"}, ensure_ascii=False)
-
-    headers = {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": CLAUDE_MODEL,
-        "max_tokens": 1800,
-        "messages": [{"role": "user", "content": (prompt or "")[:12000]}],
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
-        if response.status_code != 200:
-            return json.dumps({"ok": False, "error": "claude_api_error", "status": response.status_code}, ensure_ascii=False)
-        data = response.json()
-        answer = "\n".join(block.get("text", "") for block in data.get("content", []) if block.get("type") == "text").strip()
-        return json.dumps({"ok": True, "model": data.get("model", CLAUDE_MODEL), "answer": answer}, ensure_ascii=False)
-    except Exception:
-        logger.exception("Claude API failed")
-        return json.dumps({"ok": False, "error": "claude_request_failed"}, ensure_ascii=False)
+        logger.exception("Claude request failed")
+        return json.dumps({"ok": False, "error": "Claude request failed"}, ensure_ascii=False)
 
 
 async def github_read_file(path, start_line, end_line):
