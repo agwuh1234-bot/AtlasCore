@@ -1030,16 +1030,11 @@ async def api_app_jobs(
 ):
     verify_app_request(request, x_atlas_key)
     _prune_app_jobs()
+    validate_app_task_request(body)
 
-    active_jobs = sum(
-        1 for job in APP_JOBS.values()
-        if job.get('status') in {'queued', 'running'}
-    )
-    if active_jobs >= MAX_ACTIVE_APP_JOBS:
-        raise HTTPException(
-            status_code=409,
-            detail='Слишком много активных задач. Дождитесь завершения текущих задач.',
-        )
+    active_jobs = sum(1 for job in APP_JOBS.values() if job.get('status') in {'queued','running'})
+    if active_jobs >= APP_JOB_MAX_ACTIVE:
+        raise HTTPException(status_code=429, detail='Too many active jobs')
 
     job_id = uuid.uuid4().hex
     now = time.time()
