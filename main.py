@@ -10,6 +10,7 @@ import uvicorn
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
+from mcp.server.fastmcp import FastMCP
 
 from openai import OpenAI, RateLimitError
 
