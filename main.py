@@ -65,10 +65,8 @@ logger = logging.getLogger("atlas")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 
-def secure_key_match(provided, expected):
-    if not provided:
-        return False
-    return secrets.compare_digest(provided, expected)
+def secure_key_match(provided: str | None, expected: str) -> bool:
+    return bool(provided) and secrets.compare_digest(provided, expected)
 
 
 SYSTEM_PROMPT = """
