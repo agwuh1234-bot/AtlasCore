@@ -1,0 +1,25 @@
+{
+  "name": "public-readonly-browser-canary",
+  "goal": "Open a harmless public page and verify browser execution",
+  "steps": [
+    {
+      "id": "open-public",
+      "worker": "browser",
+      "payload": {
+        "start_url": "https://example.com",
+        "actions": [],
+        "save_session": false,
+        "timeout": 60
+      }
+    },
+    {
+      "id": "approval-isolation-check",
+      "worker": "approval",
+      "payload": {
+        "reason": "canary_approval_branch",
+        "summary": "Synthetic blocked branch; no external action"
+      }
+    }
+  ],
+  "expected": "browser branch completes while synthetic approval branch blocks independently"
+}
