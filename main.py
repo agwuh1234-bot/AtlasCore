@@ -1024,6 +1024,16 @@ async def api_app_jobs(
     verify_app_request(request, x_atlas_key)
     _prune_app_jobs()
 
+    active_jobs = sum(
+        1 for job in APP_JOBS.values()
+        if job.get('status') in {'queued', 'running'}
+    )
+    if active_jobs >= MAX_ACTIVE_APP_JOBS:
+        raise HTTPException(
+            status_code=409,
+            detail='Слишком много активных задач. Дождитесь завершения текущих задач.',
+        )
+
     job_id = uuid.uuid4().hex
     now = time.time()
     APP_JOBS[job_id] = {
