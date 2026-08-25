@@ -356,7 +356,7 @@ async def github_replace_text(
     new_text,
     commit_message,
 ):
-    response = await get_github_file(path)
+    response = await get_github_file(path, GITHUB_BRANCH)
 
     if response.status_code != 200:
         return json.dumps(
