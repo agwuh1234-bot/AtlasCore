@@ -1,3 +1,4 @@
+import asyncio
 import os
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -11,6 +12,22 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(atlas_n8n.configured())
         with patch.object(atlas_n8n, "N8N_MCP_URL", "https://example.test/mcp"), patch.object(atlas_n8n, "N8N_MCP_TOKEN", "secret"):
             self.assertTrue(atlas_n8n.configured())
+
+    def test_timeout_is_bounded_and_invalid_values_fall_back(self):
+        with patch.dict(os.environ, {"N8N_MCP_TIMEOUT_SECONDS": "0.01"}, clear=False):
+            self.assertEqual(atlas_n8n._timeout_seconds(), 1.0)
+        with patch.dict(os.environ, {"N8N_MCP_TIMEOUT_SECONDS": "999"}, clear=False):
+            self.assertEqual(atlas_n8n._timeout_seconds(), 120.0)
+        with patch.dict(os.environ, {"N8N_MCP_TIMEOUT_SECONDS": "bad"}, clear=False):
+            self.assertEqual(atlas_n8n._timeout_seconds(), 20.0)
+
+    async def test_await_mcp_fails_closed_on_timeout(self):
+        async def slow():
+            await asyncio.sleep(0.05)
+
+        with patch.object(atlas_n8n, "_timeout_seconds", return_value=0.001):
+            with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "timed out"):
+                await atlas_n8n._await_mcp(slow(), "test operation")
 
     async def test_call_tool_defaults_to_empty_arguments_after_live_discovery(self):
         tool = type("Tool", (), {"name": "workflow_test"})()
