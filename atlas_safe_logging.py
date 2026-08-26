@@ -31,7 +31,10 @@ _SENSITIVE_SUFFIXES = ("token", "secret", "password", "cookie", "credentials")
 _AUTH_ASSIGNMENT_RE = re.compile(
     r"(?i)(\bauthorization\b\s*[:=]\s*)(bearer|basic)\s+[^\s,;]+"
 )
-_AUTH_VALUE_RE = re.compile(r"(?i)(?<!=)\b(bearer|basic)\s+[^\s,;]+")
+_BEARER_VALUE_RE = re.compile(r"(?i)(?<!=)\bbearer\s+[^\s,;]+")
+_BASIC_VALUE_RE = re.compile(
+    r"(?i)(?<!=)\bbasic\s+(?=[A-Za-z0-9+/=_-]{8,}(?:[\s,;]|$))[A-Za-z0-9+/=_-]+"
+)
 _QUERY_CREDENTIAL_RE = re.compile(
     r"(?i)([?&](?:[a-z0-9_.-]*(?:token|secret|password|cookie|credentials)|api[_-]?key|apikey)=)([^&#\s]+)"
 )
@@ -69,7 +72,8 @@ def _sanitize_string(value: str) -> str:
         lambda match: f"{match.group(1)}{match.group(2)} <redacted>",
         value,
     )
-    redacted = _AUTH_VALUE_RE.sub(lambda match: f"{match.group(1)} <redacted>", redacted)
+    redacted = _BEARER_VALUE_RE.sub("Bearer <redacted>", redacted)
+    redacted = _BASIC_VALUE_RE.sub("Basic <redacted>", redacted)
     redacted = _QUERY_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _PLAINTEXT_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}<redacted>@", redacted)
