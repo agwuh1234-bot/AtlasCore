@@ -47,6 +47,9 @@ _URL_USERINFO_RE = re.compile(
 _JWT_LIKE_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:eyJ[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})(?![A-Za-z0-9_-])"
 )
+_TELEGRAM_BOT_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])\d{8,12}:[A-Za-z0-9_-]{30,}(?![A-Za-z0-9_-])"
+)
 _KNOWN_PROVIDER_SECRET_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:"
     r"sk-ant-[A-Za-z0-9_-]{12,}|"
@@ -89,6 +92,7 @@ def _sanitize_string(value: str) -> str:
     redacted = _PLAINTEXT_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}<redacted>@", redacted)
     redacted = _JWT_LIKE_RE.sub("<redacted-jwt>", redacted)
+    redacted = _TELEGRAM_BOT_TOKEN_RE.sub("<redacted-telegram-token>", redacted)
     redacted = _KNOWN_PROVIDER_SECRET_RE.sub("<redacted-secret>", redacted)
     if len(redacted) > 500:
         return redacted[:500] + "…<truncated>"
