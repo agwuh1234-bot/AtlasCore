@@ -54,7 +54,17 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
     if second_plan.get("operations") != plan.get("operations") or not second_plan.get("ok"):
         return {"ok": False, "applied": False, "reason": "repair_plan_changed_during_preflight"}
 
-    await call_tool(UPDATE_TOOL, {"workflowId": TARGET_WORKFLOW_ID, "operations": plan["operations"]})
+    try:
+        await call_tool(UPDATE_TOOL, {"workflowId": TARGET_WORKFLOW_ID, "operations": plan["operations"]})
+    except Exception:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=update_exception")
+        return {
+            "ok": False,
+            "applied": True,
+            "verified": False,
+            "reason": "repair_update_exception",
+        }
+
     verify = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
     verify_plan = plan_safe_ecom_repair(_payload(verify))
     verified = bool(verify_plan.get("ok") and not verify_plan.get("operations") and not verify_plan.get("remaining_issues"))
