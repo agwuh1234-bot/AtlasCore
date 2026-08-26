@@ -108,6 +108,63 @@ def _authorize_call(tool_name: str, arguments: dict) -> None:
             raise N8NBridgeError("n8n MCP call blocked by policy: destructive_disabled")
 
 
+def _matches_schema_type(value, expected: str) -> bool:
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "object":
+        return isinstance(value, dict)
+    if expected == "null":
+        return value is None
+    return True
+
+
+def _validate_arguments_against_schema(arguments: dict, schema) -> None:
+    """Fail closed on clear top-level schema mismatches before invoking n8n.
+
+    MCP schemas can use full JSON Schema. Atlas intentionally performs only
+    conservative top-level checks here (required fields, primitive type and enum)
+    rather than pretending to implement the entire specification.
+    """
+    if not isinstance(schema, dict):
+        return
+
+    required = schema.get("required")
+    if isinstance(required, list):
+        missing = [key for key in required if isinstance(key, str) and key not in arguments]
+        if missing:
+            raise N8NBridgeError(
+                "n8n tool arguments failed schema validation: missing required field(s): "
+                + ", ".join(sorted(missing))
+            )
+
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return
+
+    for key, value in arguments.items():
+        prop = properties.get(key)
+        if not isinstance(prop, dict):
+            continue
+        expected = prop.get("type")
+        if isinstance(expected, str) and not _matches_schema_type(value, expected):
+            raise N8NBridgeError(
+                f"n8n tool arguments failed schema validation: {key} must be {expected}"
+            )
+        allowed_values = prop.get("enum")
+        if isinstance(allowed_values, list) and value not in allowed_values:
+            raise N8NBridgeError(
+                f"n8n tool arguments failed schema validation: {key} is not an allowed value"
+            )
+
+
 async def call_tool(name: str, arguments: dict | None = None):
     tool_name = (name or "").strip()
     if not tool_name:
@@ -118,8 +175,9 @@ async def call_tool(name: str, arguments: dict | None = None):
     call_arguments = {} if arguments is None else arguments
     async with n8n_session() as session:
         discovered = await _await_mcp(session.list_tools(), "tool discovery")
-        available_names = {tool.name for tool in discovered.tools}
-        if tool_name not in available_names:
+        discovered_tool = next((tool for tool in discovered.tools if tool.name == tool_name), None)
+        if discovered_tool is None:
             raise N8NBridgeError(f"Unknown n8n MCP tool: {tool_name}")
         _authorize_call(tool_name, call_arguments)
+        _validate_arguments_against_schema(call_arguments, getattr(discovered_tool, "inputSchema", None))
         return await _await_mcp(session.call_tool(tool_name, call_arguments), f"tool call {tool_name}")
