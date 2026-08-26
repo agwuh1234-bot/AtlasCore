@@ -45,30 +45,40 @@ def _find_workflow(value: Any, wanted: str) -> dict | None:
     return None
 
 
-def _collect_nodes(value: Any) -> list[dict[str, Any]]:
-    nodes: list[dict[str, Any]] = []
+def _find_workflow_body(value: Any) -> dict | None:
     if isinstance(value, dict):
-        raw_nodes = value.get("nodes")
-        if isinstance(raw_nodes, list):
-            for node in raw_nodes:
-                if isinstance(node, dict):
-                    nodes.append({
-                        "name": node.get("name"),
-                        "type": node.get("type"),
-                        "typeVersion": node.get("typeVersion"),
-                        "disabled": node.get("disabled", False),
-                    })
-            if nodes:
-                return nodes
+        if isinstance(value.get("nodes"), list) and isinstance(value.get("connections"), dict):
+            return value
         for child in value.values():
-            found = _collect_nodes(child)
+            found = _find_workflow_body(child)
             if found:
                 return found
     elif isinstance(value, list):
         for child in value:
-            found = _collect_nodes(child)
+            found = _find_workflow_body(child)
             if found:
                 return found
+    return None
+
+
+def _collect_nodes(value: Any) -> list[dict[str, Any]]:
+    body = _find_workflow_body(value)
+    if not body:
+        return []
+    nodes: list[dict[str, Any]] = []
+    for node in body.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        params = node.get("parameters")
+        nodes.append({
+            "name": node.get("name"),
+            "type": node.get("type"),
+            "typeVersion": node.get("typeVersion"),
+            "disabled": node.get("disabled", False),
+            "position": node.get("position"),
+            "parameter_keys": sorted(params.keys()) if isinstance(params, dict) else [],
+            "credential_types": sorted((node.get("credentials") or {}).keys()) if isinstance(node.get("credentials"), dict) else [],
+        })
     return nodes
 
 
@@ -90,14 +100,17 @@ async def maybe_inspect_ecomsx222(logger) -> None:
         workflow_id = workflow.get("id") or workflow.get("workflowId")
         details = await call_tool("get_workflow_details", {"workflowId": workflow_id, "detailLevel": "full"})
         details_payload = _payload(details)
+        body = _find_workflow_body(details_payload) or {}
         nodes = _collect_nodes(details_payload)
         summary = {
             "ok": True,
             "workflow_id": workflow_id,
             "name": workflow.get("name") or TARGET_WORKFLOW,
+            "active": body.get("active"),
             "node_count": len(nodes),
             "nodes": nodes,
+            "connections": body.get("connections", {}),
         }
-        logger.info("ECOMSX222_INSPECT_RESULT %s", json.dumps(summary, ensure_ascii=False, default=str)[:12000])
+        logger.info("ECOMSX222_INSPECT_RESULT %s", json.dumps(summary, ensure_ascii=False, default=str)[:20000])
     except Exception as exc:
         logger.exception("ECOMSX222_INSPECT_RESULT ok=false error=%s", type(exc).__name__)
