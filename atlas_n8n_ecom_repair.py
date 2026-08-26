@@ -23,6 +23,12 @@ _FORBIDDEN_EDGES = (
     ("Message a model", "Edit a file"),
 )
 
+_NODE_IDENTITY_PREFIXES = (
+    "missing_node:",
+    "duplicate_node_name:",
+    "unexpected_node_type:",
+)
+
 
 def _connection_targets(connections: Any) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
@@ -97,11 +103,17 @@ def _planned_reachable_cycle(body: dict[str, Any], operations: list[dict[str, An
     return visit(TRIGGER_NODE)
 
 
+def _has_node_identity_issue(issues: list[str]) -> bool:
+    return any(issue.startswith(_NODE_IDENTITY_PREFIXES) for issue in issues)
+
+
 def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
     """Return a deterministic dry-run repair plan without executing n8n writes.
 
     The planner only proposes narrowly reviewed topology edits. Unknown safety
-    issues remain blockers and are never guessed at.
+    issues remain blockers and are never guessed at. If critical node identity
+    is uncertain (missing, duplicate, or wrong type), no write operations are
+    proposed at all.
     """
     body = _find_workflow_body(value)
     if not isinstance(body, dict):
@@ -110,6 +122,16 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
             "dry_run": True,
             "operations": [],
             "remaining_issues": ["malformed_workflow_body"],
+        }
+
+    safety = _workflow_safety_summary(value)
+    safety_issues = [str(issue) for issue in safety.get("issues", [])]
+    if _has_node_identity_issue(safety_issues):
+        return {
+            "ok": False,
+            "dry_run": True,
+            "operations": [],
+            "remaining_issues": safety_issues,
         }
 
     operations: list[dict[str, Any]] = []
@@ -135,7 +157,6 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
                 }
             )
 
-    safety = _workflow_safety_summary(value)
     repaired_issue_keys = {
         f"unsafe_connection:{source}->{target}" for source, target in _FORBIDDEN_EDGES
     } | {
@@ -144,7 +165,7 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
     planned_reachable = _planned_reachable_nodes(body, operations)
 
     remaining = []
-    for issue in safety.get("issues", []):
+    for issue in safety_issues:
         if issue in repaired_issue_keys:
             continue
         if issue.startswith("unexpected_reachable_node:"):
