@@ -17,6 +17,28 @@ class EcomRepairGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "destructive_disabled")
         call.assert_not_awaited()
 
+    async def test_first_preflight_read_exception_is_fail_closed(self):
+        call = AsyncMock(side_effect=RuntimeError("preflight transport lost"))
+        logger = AsyncMock()
+        with patch.object(gate, "_enabled", return_value=True), patch.object(gate, "configured", return_value=True), patch.object(gate, "decision", return_value=(True, "ok")), patch.object(gate, "call_tool", call):
+            result = await gate.maybe_apply_safe_ecom_repair(logger)
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["applied"])
+        self.assertEqual(result["reason"], "preflight_first_read_exception")
+        self.assertEqual(call.await_count, 1)
+
+    async def test_second_preflight_read_exception_is_fail_closed(self):
+        workflow = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
+        plan = {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []}
+        call = AsyncMock(side_effect=[workflow, RuntimeError("second preflight transport lost")])
+        logger = AsyncMock()
+        with patch.object(gate, "_enabled", return_value=True), patch.object(gate, "configured", return_value=True), patch.object(gate, "decision", return_value=(True, "ok")), patch.object(gate, "call_tool", call), patch.object(gate, "_payload", side_effect=lambda x: x), patch.object(gate, "_workflow_fingerprint", return_value="stable-fingerprint"), patch.object(gate, "plan_safe_ecom_repair", return_value=plan):
+            result = await gate.maybe_apply_safe_ecom_repair(logger)
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["applied"])
+        self.assertEqual(result["reason"], "preflight_second_read_exception")
+        self.assertEqual(call.await_count, 2)
+
     async def test_concurrent_change_blocks_update(self):
         first = {"nodes": [], "connections": {}, "active": False}
         second = {"nodes": [{"name": "changed"}], "connections": {}, "active": False}
