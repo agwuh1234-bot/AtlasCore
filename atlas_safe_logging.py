@@ -41,6 +41,9 @@ _URL_USERINFO_RE = re.compile(
 _JWT_LIKE_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:eyJ[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})(?![A-Za-z0-9_-])"
 )
+_KNOWN_PROVIDER_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:sk-ant-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})(?![A-Za-z0-9_-])"
+)
 
 
 def _canonical_key(key: Any) -> str:
@@ -64,6 +67,7 @@ def _sanitize_string(value: str) -> str:
     redacted = _PLAINTEXT_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}<redacted>@", redacted)
     redacted = _JWT_LIKE_RE.sub("<redacted-jwt>", redacted)
+    redacted = _KNOWN_PROVIDER_SECRET_RE.sub("<redacted-secret>", redacted)
     if len(redacted) > 500:
         return redacted[:500] + "…<truncated>"
     return redacted
