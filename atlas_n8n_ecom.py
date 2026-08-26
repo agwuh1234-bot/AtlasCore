@@ -131,6 +131,32 @@ def _has_connection(body: dict[str, Any], source: str, target: str) -> bool:
     return False
 
 
+def _reachable_nodes(body: dict[str, Any], start: str) -> set[str]:
+    connections = body.get("connections")
+    if not isinstance(connections, dict):
+        return set()
+    seen: set[str] = set()
+    queue = [start]
+    while queue:
+        source = queue.pop(0)
+        source_map = connections.get(source)
+        if not isinstance(source_map, dict):
+            continue
+        for outputs in source_map.values():
+            if not isinstance(outputs, list):
+                continue
+            for branch in outputs:
+                if not isinstance(branch, list):
+                    continue
+                for edge in branch:
+                    target = edge.get("node") if isinstance(edge, dict) else None
+                    if isinstance(target, str) and target and target not in seen:
+                        seen.add(target)
+                        queue.append(target)
+    seen.discard(start)
+    return seen
+
+
 def _add_connection_if_missing(
     operations: list[dict[str, Any]],
     body: dict[str, Any],
@@ -147,8 +173,9 @@ def _workflow_safety_summary(value: Any) -> dict[str, Any]:
     by_name = {str(node.get("name")): node for node in nodes}
     issues: list[str] = []
 
+    trigger = "When clicking ‘Execute workflow’"
     required_nodes = [
-        "When clicking ‘Execute workflow’",
+        trigger,
         SHOPIFY_BRIEF_NODE,
         "Message a model1",
         "Message a model",
@@ -158,7 +185,7 @@ def _workflow_safety_summary(value: Any) -> dict[str, Any]:
             issues.append(f"missing_node:{name}")
 
     required_edges = [
-        ("When clicking ‘Execute workflow’", SHOPIFY_BRIEF_NODE),
+        (trigger, SHOPIFY_BRIEF_NODE),
         (SHOPIFY_BRIEF_NODE, "Message a model1"),
         ("Message a model1", "Message a model"),
     ]
@@ -167,7 +194,7 @@ def _workflow_safety_summary(value: Any) -> dict[str, Any]:
             issues.append(f"missing_connection:{source}->{target}")
 
     forbidden_edges = [
-        ("When clicking ‘Execute workflow’", "HTTP Request"),
+        (trigger, "HTTP Request"),
         ("HTTP Request", "Message a model1"),
         ("Message a model", "Edit a file"),
     ]
@@ -179,6 +206,11 @@ def _workflow_safety_summary(value: Any) -> dict[str, Any]:
         node = by_name.get(name)
         if node is not None and node.get("disabled") is not True:
             issues.append(f"unsafe_node_enabled:{name}")
+
+    allowed_reachable = {SHOPIFY_BRIEF_NODE, "Message a model1", "Message a model"}
+    unexpected = sorted(_reachable_nodes(body, trigger) - allowed_reachable)
+    for name in unexpected:
+        issues.append(f"unexpected_reachable_node:{name}")
 
     return {
         "ready_for_safe_manual_run": not issues,
@@ -241,7 +273,7 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
             {"type": "setNodeDisabled", "nodeName": "HTTP Request", "disabled": True},
             {"type": "setNodeDisabled", "nodeName": "HTTP Request1", "disabled": True},
             {"type": "setNodeDisabled", "nodeName": "Edit a file", "disabled": True},
-            {"type": "removeConnection", "source": "When clicking ‘Execute workflow’", "target": "HTTP Request", "ignoreErrors": True},
+            {"type": "removeConnection", "source": trigger if False else "When clicking ‘Execute workflow’", "target": "HTTP Request", "ignoreErrors": True},
             {"type": "removeConnection", "source": "HTTP Request", "target": "Message a model1", "ignoreErrors": True},
             {"type": "removeConnection", "source": "Message a model", "target": "Edit a file", "ignoreErrors": True},
         ])
