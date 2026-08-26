@@ -34,16 +34,24 @@ def _workflow_fingerprint(details_payload: Any) -> str | None:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _execution_receipt(payload: Any) -> dict[str, Any]:
+def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW_ID) -> dict[str, Any]:
     """Extract only non-sensitive confirmation that n8n accepted an execution.
 
     An execution identifier alone is not sufficient if n8n also reports an
     explicit failure or unknown state. Explicit statuses are fail-closed: only
-    known accepted states confirm execution. When status is absent, an execution
+    known accepted states confirm execution. If n8n returns a workflow id, it
+    must match the workflow that Atlas requested; a mismatched receipt is never
+    treated as success. When status and workflow id are absent, an execution
     identifier is still accepted as the minimal receipt.
     """
     if not isinstance(payload, dict):
-        return {"confirmed": False, "execution_id_present": False, "status": None}
+        return {
+            "confirmed": False,
+            "execution_id_present": False,
+            "status": None,
+            "workflow_id_present": False,
+            "workflow_id_matches": None,
+        }
 
     execution_id = payload.get("executionId") or payload.get("execution_id") or payload.get("id")
     status = payload.get("status")
@@ -52,9 +60,15 @@ def _execution_receipt(payload: Any) -> dict[str, Any]:
     else:
         status = None
 
+    receipt_workflow_id = payload.get("workflowId") or payload.get("workflow_id")
+    workflow_id_present = receipt_workflow_id is not None
+    workflow_id_matches = None if not workflow_id_present else str(receipt_workflow_id) == str(expected_workflow_id)
+
     accepted_statuses = {"running", "success", "completed", "queued", "waiting"}
     failed_statuses = {"failed", "error", "cancelled", "canceled", "crashed", "stopped"}
-    if status in failed_statuses:
+    if workflow_id_matches is False:
+        confirmed = False
+    elif status in failed_statuses:
         confirmed = False
     elif status is not None:
         confirmed = status in accepted_statuses
@@ -64,6 +78,8 @@ def _execution_receipt(payload: Any) -> dict[str, Any]:
         "confirmed": confirmed,
         "execution_id_present": bool(execution_id),
         "status": status,
+        "workflow_id_present": workflow_id_present,
+        "workflow_id_matches": workflow_id_matches,
     }
 
 
@@ -180,6 +196,8 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
                         "reason": "execution_result_unconfirmed",
                         "workflow_id": TARGET_WORKFLOW_ID,
                         "status": receipt["status"],
+                        "receipt_workflow_id_present": receipt["workflow_id_present"],
+                        "receipt_workflow_id_matches": receipt["workflow_id_matches"],
                     },
                     ensure_ascii=False,
                 ),
@@ -201,6 +219,8 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
                     "workflow_id": TARGET_WORKFLOW_ID,
                     "execution_id_present": receipt["execution_id_present"],
                     "status": receipt["status"],
+                    "receipt_workflow_id_present": receipt["workflow_id_present"],
+                    "receipt_workflow_id_matches": receipt["workflow_id_matches"],
                 },
                 ensure_ascii=False,
             ),
