@@ -61,6 +61,27 @@ def _find_workflow_body(value: Any) -> dict | None:
     return None
 
 
+def _safe_params(node: dict[str, Any]) -> dict[str, Any]:
+    params = node.get("parameters")
+    if not isinstance(params, dict):
+        return {}
+    node_type = str(node.get("type") or "")
+    if node_type == "n8n-nodes-base.httpRequest":
+        return {k: params.get(k) for k in ("method", "url", "authentication", "nodeCredentialType", "sendBody") if k in params}
+    if node_type == "n8n-nodes-base.github":
+        return {k: params.get(k) for k in ("resource", "operation", "owner", "repository", "filePath", "commitMessage", "authentication") if k in params}
+    if node_type == "@n8n/n8n-nodes-langchain.anthropic":
+        safe = {"modelId": params.get("modelId")}
+        messages = params.get("messages")
+        if messages is not None:
+            safe["messages"] = messages
+        options = params.get("options")
+        if isinstance(options, dict):
+            safe["option_keys"] = sorted(options.keys())
+        return safe
+    return {}
+
+
 def _collect_nodes(value: Any) -> list[dict[str, Any]]:
     body = _find_workflow_body(value)
     if not body:
@@ -78,6 +99,7 @@ def _collect_nodes(value: Any) -> list[dict[str, Any]]:
             "position": node.get("position"),
             "parameter_keys": sorted(params.keys()) if isinstance(params, dict) else [],
             "credential_types": sorted((node.get("credentials") or {}).keys()) if isinstance(node.get("credentials"), dict) else [],
+            "safe_parameters": _safe_params(node),
         })
     return nodes
 
@@ -111,6 +133,6 @@ async def maybe_inspect_ecomsx222(logger) -> None:
             "nodes": nodes,
             "connections": body.get("connections", {}),
         }
-        logger.info("ECOMSX222_INSPECT_RESULT %s", json.dumps(summary, ensure_ascii=False, default=str)[:20000])
+        logger.info("ECOMSX222_INSPECT_RESULT %s", json.dumps(summary, ensure_ascii=False, default=str)[:30000])
     except Exception as exc:
         logger.exception("ECOMSX222_INSPECT_RESULT ok=false error=%s", type(exc).__name__)
