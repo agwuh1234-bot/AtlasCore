@@ -15,7 +15,8 @@ class N8NSafetyIntegrityTests(unittest.TestCase):
         self.assertIn("decision(tool_name, intent)", bridge)
         self.assertIn("N8N_DESTRUCTIVE_ENABLED", bridge)
         self.assertIn("_contains_destructive_workflow_operation", bridge)
-        self.assertIn("write_disabled", policy)
+        self.assertIn("N8N_WRITES_ENABLED", policy)
+        self.assertIn("writes_disabled", policy)
 
     def test_policy_remains_fail_closed_for_unknown_tools(self):
         text = (ROOT / "atlas_n8n_policy.py").read_text(encoding="utf-8")
