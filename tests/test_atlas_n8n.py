@@ -70,6 +70,24 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
             atlas_n8n._validate_arguments_against_schema({"operations": [{}, {}, {}]}, schema)
         atlas_n8n._validate_arguments_against_schema({"operations": [{}]}, schema)
 
+    def test_schema_validation_enforces_numeric_bounds(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                "ratio": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+            },
+        }
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "below minimum"):
+            atlas_n8n._validate_arguments_against_schema({"limit": 0}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "exceeds maximum"):
+            atlas_n8n._validate_arguments_against_schema({"limit": 101}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "exclusiveMinimum"):
+            atlas_n8n._validate_arguments_against_schema({"ratio": 0}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "exclusiveMaximum"):
+            atlas_n8n._validate_arguments_against_schema({"ratio": 1}, schema)
+        atlas_n8n._validate_arguments_against_schema({"limit": 50, "ratio": 0.5}, schema)
+
     def test_disable_node_operation_is_treated_as_destructive(self):
         self.assertTrue(
             atlas_n8n._contains_destructive_workflow_operation(
