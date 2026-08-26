@@ -117,6 +117,22 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertEqual(safe["error"].count("<redacted-secret>"), 2)
         self.assertEqual(safe["note"].count("<redacted-secret>"), 2)
 
+    def test_aws_and_google_api_credentials_are_redacted_without_labels(self):
+        aws_access_key = "AKIA" + "1234567890ABCDEF"
+        aws_session_key = "ASIA" + "ABCDEF1234567890"
+        google_api_key = "AIza" + "AbCdEfGhIjKlMnOpQrStUvWxYz012345678"
+        safe = sanitize_for_log({
+            "error": f"cloud auth failed {aws_access_key} {aws_session_key}",
+            "note": f"google request rejected {google_api_key}",
+            "safe": "AKIAnot-a-real-key",
+        })
+        rendered = str(safe)
+        for leaked in (aws_access_key, aws_session_key, google_api_key):
+            self.assertNotIn(leaked, rendered)
+        self.assertEqual(safe["error"].count("<redacted-secret>"), 2)
+        self.assertEqual(safe["note"].count("<redacted-secret>"), 1)
+        self.assertEqual(safe["safe"], "AKIAnot-a-real-key")
+
     def test_telegram_bot_tokens_are_redacted_without_labels(self):
         telegram_token = "1234567890:" + "AbCdEfGhIjKlMnOpQrStUvWxYz_123456789"
         safe = sanitize_for_log({
