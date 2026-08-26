@@ -34,6 +34,29 @@ class EcomRepairPlannerTests(unittest.TestCase):
             "ignoreErrors": False,
         }])
 
+    def test_duplicate_forbidden_edge_blocks_all_planned_writes(self):
+        value = workflow({
+            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
+            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
+            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "Message a model": {"main": [[{"node": "Edit a file"}, {"node": "Edit a file"}]]},
+        })
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertIn("duplicate_connection:Message a model->Edit a file", plan["remaining_issues"])
+
+    def test_duplicate_required_edge_blocks_all_planned_writes(self):
+        value = workflow({
+            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}, {"node": "Shopify Build Brief"}]]},
+            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
+            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+        })
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertIn("duplicate_connection:When clicking ‘Execute workflow’->Shopify Build Brief", plan["remaining_issues"])
+
     def test_missing_required_edge_is_planned_without_execution(self):
         value = workflow({
             "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
