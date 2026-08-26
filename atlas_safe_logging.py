@@ -30,10 +30,10 @@ _SENSITIVE_CANONICAL_KEYS = {
 _SENSITIVE_SUFFIXES = ("token", "secret", "password", "cookie", "credentials")
 _AUTH_VALUE_RE = re.compile(r"(?i)\b(bearer|basic)\s+[^\s,;]+")
 _QUERY_CREDENTIAL_RE = re.compile(
-    r"(?i)([?&](?:access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|token|secret|password|cookie)=)([^&#\s]+)"
+    r"(?i)([?&](?:[a-z0-9_.-]*(?:token|secret|password|cookie|credentials)|api[_-]?key|apikey)=)([^&#\s]+)"
 )
 _PLAINTEXT_CREDENTIAL_RE = re.compile(
-    r"(?i)(\b(?:access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|token|secret|password|cookie)\b\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&#]+)"
+    r"(?i)(\b(?:[a-z0-9_.-]*(?:token|secret|password|cookie|credentials)|api[_-]?key|apikey)\b\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&#]+)"
 )
 _URL_USERINFO_RE = re.compile(
     r"(?i)\b([a-z][a-z0-9+.-]*://)([^/@\s:]+):([^/@\s]+)@"
