@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import json
+import os
+from typing import Any
+
+from atlas_n8n import call_tool, configured
+
+TARGET_WORKFLOW = "ecomsx222"
+
+
+def _enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _payload(result: Any) -> Any:
+    structured = getattr(result, "structuredContent", None)
+    if structured is not None:
+        return structured
+    for block in getattr(result, "content", []) or []:
+        text = getattr(block, "text", None)
+        if not text:
+            continue
+        try:
+            return json.loads(text)
+        except Exception:
+            continue
+    return None
+
+
+def _find_workflow(value: Any, wanted: str) -> dict | None:
+    if isinstance(value, dict):
+        name = str(value.get("name") or "").strip()
+        if name.lower() == wanted.lower() and (value.get("id") or value.get("workflowId")):
+            return value
+        for child in value.values():
+            found = _find_workflow(child, wanted)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_workflow(child, wanted)
+            if found:
+                return found
+    return None
+
+
+def _collect_nodes(value: Any) -> list[dict[str, Any]]:
+    nodes: list[dict[str, Any]] = []
+    if isinstance(value, dict):
+        raw_nodes = value.get("nodes")
+        if isinstance(raw_nodes, list):
+            for node in raw_nodes:
+                if isinstance(node, dict):
+                    nodes.append({
+                        "name": node.get("name"),
+                        "type": node.get("type"),
+                        "typeVersion": node.get("typeVersion"),
+                        "disabled": node.get("disabled", False),
+                    })
+            if nodes:
+                return nodes
+        for child in value.values():
+            found = _collect_nodes(child)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _collect_nodes(child)
+            if found:
+                return found
+    return nodes
+
+
+async def maybe_inspect_ecomsx222(logger) -> None:
+    if not _enabled("N8N_INSPECT_ECOMSX222"):
+        return
+    if not configured():
+        logger.warning("ECOMSX222_INSPECT_RESULT ok=false error=n8n_not_configured")
+        return
+
+    try:
+        search = await call_tool("search_workflows", {"query": TARGET_WORKFLOW, "limit": 50})
+        search_payload = _payload(search)
+        workflow = _find_workflow(search_payload, TARGET_WORKFLOW)
+        if not workflow:
+            logger.warning("ECOMSX222_INSPECT_RESULT ok=false error=workflow_not_found query=%s payload=%s", TARGET_WORKFLOW, json.dumps(search_payload, ensure_ascii=False, default=str)[:2500])
+            return
+
+        workflow_id = workflow.get("id") or workflow.get("workflowId")
+        details = await call_tool("get_workflow_details", {"workflowId": workflow_id, "detailLevel": "full"})
+        details_payload = _payload(details)
+        nodes = _collect_nodes(details_payload)
+        summary = {
+            "ok": True,
+            "workflow_id": workflow_id,
+            "name": workflow.get("name") or TARGET_WORKFLOW,
+            "node_count": len(nodes),
+            "nodes": nodes,
+        }
+        logger.info("ECOMSX222_INSPECT_RESULT %s", json.dumps(summary, ensure_ascii=False, default=str)[:12000])
+    except Exception as exc:
+        logger.exception("ECOMSX222_INSPECT_RESULT ok=false error=%s", type(exc).__name__)
