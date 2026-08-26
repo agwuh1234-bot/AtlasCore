@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 
@@ -27,6 +28,7 @@ _SENSITIVE_CANONICAL_KEYS = {
     for item in SENSITIVE_KEYS
 }
 _SENSITIVE_SUFFIXES = ("token", "secret", "password", "cookie", "credentials")
+_AUTH_VALUE_RE = re.compile(r"(?i)\b(bearer|basic)\s+[^\s,;]+")
 
 
 def _canonical_key(key: Any) -> str:
@@ -43,6 +45,14 @@ def _is_sensitive_key(key: Any) -> bool:
     return any(canonical.endswith(suffix) for suffix in _SENSITIVE_SUFFIXES)
 
 
+def _sanitize_string(value: str) -> str:
+    """Redact common auth credentials even when embedded in a free-form string."""
+    redacted = _AUTH_VALUE_RE.sub(lambda match: f"{match.group(1)} <redacted>", value)
+    if len(redacted) > 500:
+        return redacted[:500] + "…<truncated>"
+    return redacted
+
+
 def sanitize_for_log(value: Any, *, max_depth: int = 5, max_items: int = 50) -> Any:
     """Return a bounded JSON-safe structure suitable for operational logs.
 
@@ -51,11 +61,10 @@ def sanitize_for_log(value: Any, *, max_depth: int = 5, max_items: int = 50) -> 
     """
     if max_depth < 0:
         return "<truncated>"
-    if value is None or isinstance(value, (bool, int, float, str)):
-        text = value
-        if isinstance(text, str) and len(text) > 500:
-            return text[:500] + "…<truncated>"
-        return text
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return _sanitize_string(value)
     if isinstance(value, dict):
         result: dict[str, Any] = {}
         for index, (key, child) in enumerate(value.items()):
