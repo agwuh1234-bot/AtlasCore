@@ -3,6 +3,7 @@
 This module never enables itself. Live mutation requires a dedicated feature flag
 plus the existing destructive n8n policy gate. It also double-checks the live
 workflow fingerprint before any update to prevent TOCTOU/concurrent-change writes.
+Repairs are allowed only while the target workflow is explicitly inactive.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import os
 from typing import Any
 
 from atlas_n8n import call_tool, configured
-from atlas_n8n_ecom import TARGET_WORKFLOW_ID, _payload
+from atlas_n8n_ecom import TARGET_WORKFLOW_ID, _find_workflow_body, _payload
 from atlas_n8n_ecom_repair import plan_safe_ecom_repair
 from atlas_n8n_ecom_run import _workflow_fingerprint
 from atlas_n8n_policy import decision
@@ -21,6 +22,11 @@ UPDATE_TOOL = "update_workflow"
 
 def _enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _explicitly_inactive(value: Any) -> bool:
+    body = _find_workflow_body(value)
+    return isinstance(body, dict) and body.get("active") is False
 
 
 async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
@@ -40,6 +46,9 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
         return {"ok": False, "applied": False, "reason": "preflight_first_read_exception"}
 
     first_payload = _payload(first)
+    if not _explicitly_inactive(first_payload):
+        return {"ok": False, "applied": False, "reason": "workflow_not_explicitly_inactive"}
+
     plan = plan_safe_ecom_repair(first_payload)
     fingerprint = _workflow_fingerprint(first_payload)
     if not plan.get("ok") or not plan.get("operations") or not fingerprint:
@@ -57,6 +66,8 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
         return {"ok": False, "applied": False, "reason": "preflight_second_read_exception"}
 
     second_payload = _payload(second)
+    if not _explicitly_inactive(second_payload):
+        return {"ok": False, "applied": False, "reason": "workflow_became_active_during_preflight"}
     if _workflow_fingerprint(second_payload) != fingerprint:
         return {"ok": False, "applied": False, "reason": "workflow_changed_during_preflight"}
 
@@ -86,7 +97,17 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
             "reason": "post_repair_verification_exception",
         }
 
-    verify_plan = plan_safe_ecom_repair(_payload(verify))
+    verify_payload = _payload(verify)
+    if not _explicitly_inactive(verify_payload):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=workflow_active_after_repair")
+        return {
+            "ok": False,
+            "applied": True,
+            "verified": False,
+            "reason": "workflow_active_after_repair",
+        }
+
+    verify_plan = plan_safe_ecom_repair(verify_payload)
     verified = bool(verify_plan.get("ok") and not verify_plan.get("operations") and not verify_plan.get("remaining_issues"))
     if not verified:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false")
