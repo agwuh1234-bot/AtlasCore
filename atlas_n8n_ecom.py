@@ -131,6 +131,16 @@ def _has_connection(body: dict[str, Any], source: str, target: str) -> bool:
     return False
 
 
+def _add_connection_if_missing(
+    operations: list[dict[str, Any]],
+    body: dict[str, Any],
+    source: str,
+    target: str,
+) -> None:
+    if not _has_connection(body, source, target):
+        operations.append({"type": "addConnection", "source": source, "target": target})
+
+
 async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
     if not _enabled("N8N_UPGRADE_ECOMSX222_SHOPIFY"):
         return
@@ -165,6 +175,7 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
     try:
         before_result = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
         before = _payload(before_result)
+        before_body = _find_workflow_body(before) or {}
 
         operations: list[dict[str, Any]] = []
         if not _has_node(before, SHOPIFY_BRIEF_NODE):
@@ -190,11 +201,18 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
             {"type": "removeConnection", "source": "Message a model", "target": "Edit a file", "ignoreErrors": True},
         ])
 
-        if not _has_node(before, SHOPIFY_BRIEF_NODE):
-            operations.extend([
-                {"type": "addConnection", "source": "When clicking ‘Execute workflow’", "target": SHOPIFY_BRIEF_NODE},
-                {"type": "addConnection", "source": SHOPIFY_BRIEF_NODE, "target": "Message a model1"},
-            ])
+        _add_connection_if_missing(
+            operations,
+            before_body,
+            "When clicking ‘Execute workflow’",
+            SHOPIFY_BRIEF_NODE,
+        )
+        _add_connection_if_missing(
+            operations,
+            before_body,
+            SHOPIFY_BRIEF_NODE,
+            "Message a model1",
+        )
 
         result = await call_tool("update_workflow", {"workflowId": TARGET_WORKFLOW_ID, "operations": operations})
         result_payload = _payload(result)
