@@ -8,7 +8,7 @@ class EcomRepairReconciliationTests(unittest.IsolatedAsyncioTestCase):
     async def test_ambiguous_update_exception_can_be_read_back_as_verified(self):
         before = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
         after = {"nodes": [{"name": "stable"}, {"name": "repaired"}], "connections": {}, "active": False}
-        call = AsyncMock(side_effect=[before, before, RuntimeError("transport lost after send"), after])
+        call = AsyncMock(side_effect=[before, before, RuntimeError("transport lost after send"), after, after])
         initial_plan = {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []}
         verified_plan = {"ok": True, "operations": [], "remaining_issues": []}
         logger = Mock()
@@ -19,14 +19,14 @@ class EcomRepairReconciliationTests(unittest.IsolatedAsyncioTestCase):
              patch.object(gate, "call_tool", call), \
              patch.object(gate, "_payload", side_effect=lambda x: x), \
              patch.object(gate, "_workflow_fingerprint", side_effect=lambda value: "before" if value is before else "after"), \
-             patch.object(gate, "plan_safe_ecom_repair", side_effect=[initial_plan, initial_plan, verified_plan]):
+             patch.object(gate, "plan_safe_ecom_repair", side_effect=[initial_plan, initial_plan, verified_plan, verified_plan]):
             result = await gate.maybe_apply_safe_ecom_repair(logger)
 
         self.assertTrue(result["ok"])
         self.assertTrue(result["applied"])
         self.assertTrue(result["verified"])
         self.assertTrue(result["reconciled"])
-        self.assertEqual(call.await_count, 4)
+        self.assertEqual(call.await_count, 5)
 
     async def test_ambiguous_update_reconciliation_never_retries_write(self):
         before = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
