@@ -158,6 +158,29 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("next=/ok", safe["url"])
         self.assertIn("mode=test", safe["error"])
 
+    def test_signed_url_signatures_are_redacted(self):
+        aws_sig = "a" * 64
+        google_sig = "b" * 64
+        azure_sig = "cD0xMjM0NTY3ODkwYWJjZA%3D%3D"
+        generic_sig = "deadbeefcafebabe"
+        safe = sanitize_for_log({
+            "aws": f"https://bucket.s3.amazonaws.com/file?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature={aws_sig}&mode=test",
+            "google": f"https://storage.googleapis.com/bucket/file?X-Goog-Signature={google_sig}&alt=media",
+            "azure": f"https://account.blob.core.windows.net/c/b?sv=2024-11-04&sig={azure_sig}&sp=r",
+            "generic": f"https://example.test/download?signature={generic_sig}&name=file.txt",
+        })
+        rendered = str(safe)
+        for leaked in (aws_sig, google_sig, azure_sig, generic_sig):
+            self.assertNotIn(leaked, rendered)
+        self.assertIn("X-Amz-Signature=<redacted>", safe["aws"])
+        self.assertIn("X-Goog-Signature=<redacted>", safe["google"])
+        self.assertIn("sig=<redacted>", safe["azure"])
+        self.assertIn("signature=<redacted>", safe["generic"])
+        self.assertIn("mode=test", safe["aws"])
+        self.assertIn("alt=media", safe["google"])
+        self.assertIn("sp=r", safe["azure"])
+        self.assertIn("name=file.txt", safe["generic"])
+
     def test_url_userinfo_credentials_are_redacted(self):
         safe = sanitize_for_log({
             "url": "https://atlas-user:super-secret@example.test/api",
