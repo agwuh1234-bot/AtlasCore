@@ -21,6 +21,22 @@ class N8NCallRequest(BaseModel):
     arguments: dict = Field(default_factory=dict)
 
 
+_SENSITIVE_KEY_FRAGMENTS = (
+    "token",
+    "secret",
+    "password",
+    "authorization",
+    "cookie",
+    "credential",
+    "api_key",
+    "apikey",
+    "access_key",
+    "private_key",
+)
+_MAX_TEXT_RESULT = 4000
+_MAX_REDACTION_DEPTH = 12
+
+
 def _authorized(provided: str | None, expected: str | None) -> bool:
     return bool(provided and expected and secrets.compare_digest(provided, expected))
 
@@ -39,6 +55,33 @@ def _authorize(
     raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _looks_sensitive_key(key: object) -> bool:
+    normalized = str(key).strip().lower().replace("-", "_")
+    return any(fragment in normalized for fragment in _SENSITIVE_KEY_FRAGMENTS)
+
+
+def _redact_result(value, *, depth: int = 0):
+    if depth >= _MAX_REDACTION_DEPTH:
+        return "[REDACTED_DEPTH_LIMIT]"
+    if isinstance(value, dict):
+        return {
+            str(key): "[REDACTED]" if _looks_sensitive_key(key) else _redact_result(child, depth=depth + 1)
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_result(child, depth=depth + 1) for child in value]
+    if isinstance(value, tuple):
+        return [_redact_result(child, depth=depth + 1) for child in value]
+    return value
+
+
+def _bounded_text(text: object) -> str:
+    value = str(text)
+    if len(value) <= _MAX_TEXT_RESULT:
+        return value
+    return value[:_MAX_TEXT_RESULT] + "...[TRUNCATED]"
+
+
 def _result_payload(result) -> dict:
     payload = {
         "ok": not bool(getattr(result, "isError", False)),
@@ -46,17 +89,17 @@ def _result_payload(result) -> dict:
     }
     structured = getattr(result, "structuredContent", None)
     if structured is not None:
-        payload["structured_content"] = structured
+        payload["structured_content"] = _redact_result(structured)
     content = []
     for block in getattr(result, "content", []) or []:
         if hasattr(block, "text"):
             text = block.text
             try:
-                content.append({"type": "json", "value": json.loads(text)})
+                content.append({"type": "json", "value": _redact_result(json.loads(text))})
             except Exception:
-                content.append({"type": "text", "text": text})
+                content.append({"type": "text", "text": _bounded_text(text)})
         else:
-            content.append({"type": type(block).__name__, "value": str(block)})
+            content.append({"type": type(block).__name__, "value": _bounded_text(block)})
     payload["content"] = content
     return payload
 
