@@ -26,6 +26,19 @@ class EcomRepairGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "workflow_changed_during_preflight")
         self.assertEqual(call.await_count, 2)
 
+    async def test_update_exception_is_marked_as_ambiguous_applied(self):
+        workflow = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
+        plan = {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []}
+        call = AsyncMock(side_effect=[workflow, workflow, RuntimeError("transport lost after send")])
+        logger = AsyncMock()
+        with patch.object(gate, "_enabled", return_value=True), patch.object(gate, "configured", return_value=True), patch.object(gate, "decision", return_value=(True, "ok")), patch.object(gate, "call_tool", call), patch.object(gate, "_payload", side_effect=lambda x: x), patch.object(gate, "_workflow_fingerprint", return_value="stable-fingerprint"), patch.object(gate, "plan_safe_ecom_repair", return_value=plan):
+            result = await gate.maybe_apply_safe_ecom_repair(logger)
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["applied"])
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["reason"], "repair_update_exception")
+        self.assertEqual(call.await_count, 3)
+
 
 if __name__ == "__main__":
     unittest.main()
