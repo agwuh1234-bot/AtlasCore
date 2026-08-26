@@ -25,6 +25,25 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertEqual(safe["headers"], "<redacted>")
         self.assertEqual(safe["body"], "<redacted>")
 
+    def test_sensitive_key_variants_are_redacted(self):
+        value = {
+            "accessToken": "a",
+            "client-secret": "b",
+            "webhook_token": "c",
+            "session.cookie": "d",
+            "dbCredentials": "e",
+            "tokenCount": 7,
+            "secretary": "safe",
+        }
+        safe = sanitize_for_log(value)
+        for key in ("accessToken", "client-secret", "webhook_token", "session.cookie", "dbCredentials"):
+            self.assertEqual(safe[key], "<redacted>")
+        self.assertEqual(safe["tokenCount"], 7)
+        self.assertEqual(safe["secretary"], "safe")
+        rendered = str(safe)
+        for leaked in ("'a'", "'b'", "'c'", "'d'", "'e'"):
+            self.assertNotIn(leaked, rendered)
+
     def test_large_and_deep_payloads_are_bounded(self):
         value = {
             "items": list(range(100)),
