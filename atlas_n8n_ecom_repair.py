@@ -24,6 +24,53 @@ _FORBIDDEN_EDGES = (
 )
 
 
+def _connection_targets(connections: Any) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+    if not isinstance(connections, dict):
+        return graph
+
+    for source, outputs in connections.items():
+        if not isinstance(source, str) or not isinstance(outputs, dict):
+            continue
+        for branches in outputs.values():
+            if not isinstance(branches, list):
+                continue
+            for branch in branches:
+                if not isinstance(branch, list):
+                    continue
+                for edge in branch:
+                    if not isinstance(edge, dict):
+                        continue
+                    target = edge.get("node")
+                    if isinstance(target, str):
+                        graph.setdefault(source, set()).add(target)
+    return graph
+
+
+def _planned_reachable_nodes(body: dict[str, Any], operations: list[dict[str, Any]]) -> set[str]:
+    graph = _connection_targets(body.get("connections"))
+
+    for operation in operations:
+        source = operation.get("source")
+        target = operation.get("target")
+        if not isinstance(source, str) or not isinstance(target, str):
+            continue
+        if operation.get("type") == "removeConnection":
+            graph.setdefault(source, set()).discard(target)
+        elif operation.get("type") == "addConnection":
+            graph.setdefault(source, set()).add(target)
+
+    reachable: set[str] = set()
+    stack = [TRIGGER_NODE]
+    while stack:
+        current = stack.pop()
+        if current in reachable:
+            continue
+        reachable.add(current)
+        stack.extend(graph.get(current, ()))
+    return reachable
+
+
 def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
     """Return a deterministic dry-run repair plan without executing n8n writes.
 
@@ -68,16 +115,17 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
     } | {
         f"missing_connection:{source}->{target}" for source, target in _REQUIRED_EDGES
     }
+    planned_reachable = _planned_reachable_nodes(body, operations)
 
-    remaining = [
-        issue
-        for issue in safety.get("issues", [])
-        if issue not in repaired_issue_keys
-        and not (
-            issue.startswith("unexpected_reachable_node:")
-            and any(op["type"] == "removeConnection" for op in operations)
-        )
-    ]
+    remaining = []
+    for issue in safety.get("issues", []):
+        if issue in repaired_issue_keys:
+            continue
+        if issue.startswith("unexpected_reachable_node:"):
+            node_name = issue.split(":", 1)[1]
+            if node_name not in planned_reachable:
+                continue
+        remaining.append(issue)
 
     return {
         "ok": not remaining,
