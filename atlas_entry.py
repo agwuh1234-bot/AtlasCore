@@ -113,5 +113,23 @@ async def execute_tool(name, arguments, run_context=None):
 atlas.execute_tool = execute_tool
 
 
+# Safe live integration probe. It deliberately exposes no endpoint URL, token,
+# workflow names, tool schemas, or other n8n data; only connectivity state and
+# the number of tools returned by the authenticated MCP server.
+@atlas.api.get("/integrations/n8n/health")
+async def n8n_health():
+    if not n8n_configured():
+        return {"ok": False, "configured": False, "error": "n8n_not_configured"}
+    try:
+        tools = await n8n_list()
+        return {"ok": True, "configured": True, "tool_count": len(tools)}
+    except N8NBridgeError as exc:
+        atlas.logger.warning("n8n health probe failed: %s", exc)
+        return {"ok": False, "configured": True, "error": "n8n_bridge_error"}
+    except Exception:
+        atlas.logger.exception("n8n health probe failed")
+        return {"ok": False, "configured": True, "error": "n8n_probe_failed"}
+
+
 if __name__ == "__main__":
     atlas.main()
