@@ -126,13 +126,40 @@ def _matches_schema_type(value, expected: str) -> bool:
     return True
 
 
+def _validate_size_constraints(key: str, value, prop: dict) -> None:
+    """Apply conservative JSON Schema size bounds for strings and arrays."""
+    if isinstance(value, str):
+        min_length = prop.get("minLength")
+        max_length = prop.get("maxLength")
+        if isinstance(min_length, int) and len(value) < min_length:
+            raise N8NBridgeError(
+                f"n8n tool arguments failed schema validation: {key} is shorter than minLength"
+            )
+        if isinstance(max_length, int) and len(value) > max_length:
+            raise N8NBridgeError(
+                f"n8n tool arguments failed schema validation: {key} exceeds maxLength"
+            )
+
+    if isinstance(value, list):
+        min_items = prop.get("minItems")
+        max_items = prop.get("maxItems")
+        if isinstance(min_items, int) and len(value) < min_items:
+            raise N8NBridgeError(
+                f"n8n tool arguments failed schema validation: {key} has fewer than minItems"
+            )
+        if isinstance(max_items, int) and len(value) > max_items:
+            raise N8NBridgeError(
+                f"n8n tool arguments failed schema validation: {key} exceeds maxItems"
+            )
+
+
 def _validate_arguments_against_schema(arguments: dict, schema) -> None:
     """Fail closed on clear top-level schema mismatches before invoking n8n.
 
     MCP schemas can use full JSON Schema. Atlas intentionally performs only
     conservative top-level checks here (required fields, primitive type, enum,
-    and explicitly forbidden additional properties) rather than pretending to
-    implement the entire specification.
+    size bounds, and explicitly forbidden additional properties) rather than
+    pretending to implement the entire specification.
     """
     if not isinstance(schema, dict):
         return
@@ -172,6 +199,7 @@ def _validate_arguments_against_schema(arguments: dict, schema) -> None:
             raise N8NBridgeError(
                 f"n8n tool arguments failed schema validation: {key} is not an allowed value"
             )
+        _validate_size_constraints(key, value, prop)
 
 
 async def call_tool(name: str, arguments: dict | None = None):
