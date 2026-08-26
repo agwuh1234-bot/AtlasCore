@@ -29,6 +29,12 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
         session.list_tools.assert_awaited_once()
         session.call_tool.assert_awaited_once_with("workflow_test", {})
 
+    async def test_call_tool_rejects_non_object_arguments_before_connecting(self):
+        with patch.object(atlas_n8n, "n8n_session") as mocked_session:
+            with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "arguments must be an object"):
+                await atlas_n8n.call_tool("workflow_test", ["bad"])
+        mocked_session.assert_not_called()
+
     async def test_call_tool_rejects_name_missing_from_live_discovery(self):
         session = AsyncMock()
         session.list_tools.return_value = type("Result", (), {"tools": []})()
