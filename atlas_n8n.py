@@ -172,13 +172,41 @@ def _validate_size_constraints(key: str, value, prop: dict) -> None:
             )
 
 
+def _validate_numeric_constraints(key: str, value, prop: dict) -> None:
+    """Apply conservative JSON Schema numeric bounds before an MCP write/read call."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return
+
+    minimum = prop.get("minimum")
+    maximum = prop.get("maximum")
+    exclusive_minimum = prop.get("exclusiveMinimum")
+    exclusive_maximum = prop.get("exclusiveMaximum")
+
+    if isinstance(minimum, (int, float)) and value < minimum:
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {key} is below minimum"
+        )
+    if isinstance(maximum, (int, float)) and value > maximum:
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {key} exceeds maximum"
+        )
+    if isinstance(exclusive_minimum, (int, float)) and not isinstance(exclusive_minimum, bool) and value <= exclusive_minimum:
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {key} must exceed exclusiveMinimum"
+        )
+    if isinstance(exclusive_maximum, (int, float)) and not isinstance(exclusive_maximum, bool) and value >= exclusive_maximum:
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {key} must be below exclusiveMaximum"
+        )
+
+
 def _validate_arguments_against_schema(arguments: dict, schema) -> None:
     """Fail closed on clear top-level schema mismatches before invoking n8n.
 
     MCP schemas can use full JSON Schema. Atlas intentionally performs only
     conservative top-level checks here (required fields, primitive type, enum,
-    size bounds, and explicitly forbidden additional properties) rather than
-    pretending to implement the entire specification.
+    size/numeric bounds, and explicitly forbidden additional properties) rather
+    than pretending to implement the entire specification.
     """
     if not isinstance(schema, dict):
         return
@@ -219,6 +247,7 @@ def _validate_arguments_against_schema(arguments: dict, schema) -> None:
                 f"n8n tool arguments failed schema validation: {key} is not an allowed value"
             )
         _validate_size_constraints(key, value, prop)
+        _validate_numeric_constraints(key, value, prop)
 
 
 async def call_tool(name: str, arguments: dict | None = None):
