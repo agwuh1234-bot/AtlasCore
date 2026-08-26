@@ -5,8 +5,11 @@ import os
 from typing import Any
 
 from atlas_n8n import call_tool, configured
+from atlas_n8n_policy import decision
 
 TARGET_WORKFLOW = "ecomsx222"
+TARGET_WORKFLOW_ID = "0S8720gc3G2OODmG"
+SHOPIFY_BRIEF_NODE = "Shopify Build Brief"
 
 
 def _enabled(name: str) -> bool:
@@ -102,6 +105,105 @@ def _collect_nodes(value: Any) -> list[dict[str, Any]]:
             "safe_parameters": _safe_params(node),
         })
     return nodes
+
+
+def _has_node(value: Any, name: str) -> bool:
+    return any(node.get("name") == name for node in _collect_nodes(value))
+
+
+async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
+    if not _enabled("N8N_UPGRADE_ECOMSX222_SHOPIFY"):
+        return
+    if not configured():
+        logger.warning("ECOMSX222_SHOPIFY_RESULT ok=false error=n8n_not_configured")
+        return
+
+    allowed, reason = decision("update_workflow", "write")
+    if not allowed:
+        logger.warning("ECOMSX222_SHOPIFY_RESULT ok=false error=policy_blocked reason=%s", reason)
+        return
+
+    strategy_prompt = """=You are the Shopify commerce strategist for ecomSX222.\n\nSTORE CONTEXT FROM THE PREVIOUS NODE:\n{{ JSON.stringify($json) }}\n\nTurn the merchant request/context into a concrete Shopify implementation brief. Focus on conversion, product merchandising, navigation, trust, mobile UX, SEO, retention, and measurable outcomes. Prefer Shopify Online Store 2.0 patterns.\n\nRules:\n- This workflow is for Shopify/ecommerce work only. Never edit AtlasCore, main.py, repositories, branches, or infrastructure.\n- Never expose credentials or secrets.\n- Do not perform destructive store operations.\n- Separate facts from assumptions.\n- Return a concise implementation brief for the Shopify developer in the next step: objective, target pages/objects, exact changes, data needed, validation checklist, and expected KPI impact.\n- If store-specific information is missing, state what is missing instead of inventing it."""
+
+    developer_prompt = """=You are the senior Shopify Online Store 2.0 developer for ecomSX222.\n\nSTRATEGY BRIEF:\n{{ JSON.stringify($json) }}\n\nProduce an implementation-ready Shopify package. Use Liquid, JSON templates, sections, blocks, metafields/metaobjects, CSS and minimal JavaScript when appropriate. Prefer native Shopify capabilities over unnecessary apps.\n\nRules:\n- Work only on Shopify/ecommerce scope. Never modify AtlasCore/main.py or GitHub automatically.\n- Never expose or hardcode API keys, tokens, passwords, cookies, or credentials.\n- Never delete products, customers, orders, themes, files, workflows, or data.\n- Treat live-store writes as requiring an explicit execution step; this workflow should prepare safe changes first.\n- Preserve mobile performance and accessibility.\n- Return: implementation plan, exact code/config snippets where useful, test checklist, rollback note, and next safe action.\n- Make outputs practical for a Basic-plan Shopify store in Germany using EUR."""
+
+    brief_parameters = {
+        "assignments": {
+            "assignments": [
+                {"id": "shop-platform", "name": "platform", "value": "Shopify", "type": "string"},
+                {"id": "shop-domain", "name": "store_domain", "value": "z1egtm-1t.myshopify.com", "type": "string"},
+                {"id": "shop-plan", "name": "plan", "value": "Basic", "type": "string"},
+                {"id": "shop-market", "name": "market", "value": "Germany", "type": "string"},
+                {"id": "shop-currency", "name": "currency", "value": "EUR", "type": "string"},
+                {"id": "shop-stack", "name": "stack", "value": "Shopify Online Store 2.0 / Liquid", "type": "string"},
+                {"id": "shop-scope", "name": "scope", "value": "conversion-focused ecommerce development", "type": "string"},
+                {"id": "shop-safe", "name": "safe_mode", "value": True, "type": "boolean"},
+            ]
+        }
+    }
+
+    try:
+        before_result = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+        before = _payload(before_result)
+
+        operations: list[dict[str, Any]] = []
+        if not _has_node(before, SHOPIFY_BRIEF_NODE):
+            operations.append({
+                "type": "addNode",
+                "node": {
+                    "name": SHOPIFY_BRIEF_NODE,
+                    "type": "n8n-nodes-base.set",
+                    "typeVersion": 3.4,
+                    "parameters": brief_parameters,
+                    "position": [-920, 320],
+                },
+            })
+
+        operations.extend([
+            {"type": "updateNodeParameters", "nodeName": "Message a model1", "parameters": {"messages": {"values": [{"content": strategy_prompt}]}}},
+            {"type": "updateNodeParameters", "nodeName": "Message a model", "parameters": {"messages": {"values": [{"content": developer_prompt}]}}},
+            {"type": "setNodeDisabled", "nodeName": "HTTP Request", "disabled": True},
+            {"type": "setNodeDisabled", "nodeName": "HTTP Request1", "disabled": True},
+            {"type": "setNodeDisabled", "nodeName": "Edit a file", "disabled": True},
+            {"type": "removeConnection", "source": "When clicking ‘Execute workflow’", "target": "HTTP Request", "ignoreErrors": True},
+            {"type": "removeConnection", "source": "HTTP Request", "target": "Message a model1", "ignoreErrors": True},
+            {"type": "removeConnection", "source": "Message a model", "target": "Edit a file", "ignoreErrors": True},
+        ])
+
+        if not _has_node(before, SHOPIFY_BRIEF_NODE):
+            operations.extend([
+                {"type": "addConnection", "source": "When clicking ‘Execute workflow’", "target": SHOPIFY_BRIEF_NODE},
+                {"type": "addConnection", "source": SHOPIFY_BRIEF_NODE, "target": "Message a model1"},
+            ])
+
+        result = await call_tool("update_workflow", {"workflowId": TARGET_WORKFLOW_ID, "operations": operations})
+        result_payload = _payload(result)
+
+        verify_result = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+        verify = _payload(verify_result)
+        body = _find_workflow_body(verify) or {}
+        nodes = _collect_nodes(verify)
+        by_name = {str(node.get("name")): node for node in nodes}
+        verified = (
+            SHOPIFY_BRIEF_NODE in by_name
+            and by_name.get("HTTP Request", {}).get("disabled") is True
+            and by_name.get("HTTP Request1", {}).get("disabled") is True
+            and by_name.get("Edit a file", {}).get("disabled") is True
+        )
+        logger.info(
+            "ECOMSX222_SHOPIFY_RESULT %s",
+            json.dumps({
+                "ok": bool(verified),
+                "workflow_id": TARGET_WORKFLOW_ID,
+                "active": body.get("active"),
+                "node_count": len(nodes),
+                "nodes": [{"name": n.get("name"), "type": n.get("type"), "disabled": n.get("disabled")} for n in nodes],
+                "connections": body.get("connections", {}),
+                "update_result": result_payload,
+            }, ensure_ascii=False, default=str)[:20000],
+        )
+    except Exception as exc:
+        logger.exception("ECOMSX222_SHOPIFY_RESULT ok=false error=%s", type(exc).__name__)
 
 
 async def maybe_inspect_ecomsx222(logger) -> None:
