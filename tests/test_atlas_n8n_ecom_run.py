@@ -43,6 +43,20 @@ class EcomRunGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(readiness["ready"])
         self.assertIn("workflow_active", readiness["issues"])
 
+    def test_readiness_blocks_missing_active_state(self):
+        workflow = dict(SAFE_WORKFLOW)
+        workflow.pop("active", None)
+        readiness = run_gate.execution_readiness(workflow)
+        self.assertFalse(readiness["ready"])
+        self.assertIn("workflow_active_state_unknown", readiness["issues"])
+
+    def test_readiness_blocks_non_boolean_active_state(self):
+        workflow = dict(SAFE_WORKFLOW)
+        workflow["active"] = "false"
+        readiness = run_gate.execution_readiness(workflow)
+        self.assertFalse(readiness["ready"])
+        self.assertIn("workflow_active_state_unknown", readiness["issues"])
+
     def test_fingerprint_is_stable_and_changes_with_body(self):
         first = run_gate._workflow_fingerprint(SAFE_WORKFLOW)
         same = run_gate._workflow_fingerprint(deepcopy(SAFE_WORKFLOW))
