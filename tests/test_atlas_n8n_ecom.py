@@ -121,6 +121,59 @@ class AtlasN8NEcomTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(operations, [])
 
+    def test_workflow_safety_summary_marks_safe_topology_ready(self):
+        workflow = {
+            "nodes": [
+                {"name": "When clicking ‘Execute workflow’", "type": "n8n-nodes-base.manualTrigger", "parameters": {}},
+                {"name": "Shopify Build Brief", "type": "n8n-nodes-base.set", "parameters": {}},
+                {"name": "Message a model1", "type": "@n8n/n8n-nodes-langchain.anthropic", "parameters": {}},
+                {"name": "Message a model", "type": "@n8n/n8n-nodes-langchain.anthropic", "parameters": {}},
+                {"name": "HTTP Request", "type": "n8n-nodes-base.httpRequest", "disabled": True, "parameters": {}},
+                {"name": "HTTP Request1", "type": "n8n-nodes-base.httpRequest", "disabled": True, "parameters": {}},
+                {"name": "Edit a file", "type": "n8n-nodes-base.github", "disabled": True, "parameters": {}},
+            ],
+            "connections": {
+                "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief", "type": "main", "index": 0}]]},
+                "Shopify Build Brief": {"main": [[{"node": "Message a model1", "type": "main", "index": 0}]]},
+                "Message a model1": {"main": [[{"node": "Message a model", "type": "main", "index": 0}]]},
+            },
+        }
+
+        safety = ecom._workflow_safety_summary(workflow)
+
+        self.assertTrue(safety["ready_for_safe_manual_run"])
+        self.assertEqual(safety["issues"], [])
+
+    def test_workflow_safety_summary_blocks_enabled_legacy_write_path(self):
+        workflow = {
+            "nodes": [
+                {"name": "When clicking ‘Execute workflow’", "type": "n8n-nodes-base.manualTrigger", "parameters": {}},
+                {"name": "Shopify Build Brief", "type": "n8n-nodes-base.set", "parameters": {}},
+                {"name": "Message a model1", "type": "@n8n/n8n-nodes-langchain.anthropic", "parameters": {}},
+                {"name": "Message a model", "type": "@n8n/n8n-nodes-langchain.anthropic", "parameters": {}},
+                {"name": "HTTP Request", "type": "n8n-nodes-base.httpRequest", "disabled": False, "parameters": {}},
+                {"name": "HTTP Request1", "type": "n8n-nodes-base.httpRequest", "disabled": True, "parameters": {}},
+                {"name": "Edit a file", "type": "n8n-nodes-base.github", "disabled": False, "parameters": {}},
+            ],
+            "connections": {
+                "When clicking ‘Execute workflow’": {"main": [[
+                    {"node": "Shopify Build Brief", "type": "main", "index": 0},
+                    {"node": "HTTP Request", "type": "main", "index": 0},
+                ]]},
+                "Shopify Build Brief": {"main": [[{"node": "Message a model1", "type": "main", "index": 0}]]},
+                "Message a model1": {"main": [[{"node": "Message a model", "type": "main", "index": 0}]]},
+                "Message a model": {"main": [[{"node": "Edit a file", "type": "main", "index": 0}]]},
+            },
+        }
+
+        safety = ecom._workflow_safety_summary(workflow)
+
+        self.assertFalse(safety["ready_for_safe_manual_run"])
+        self.assertIn("unsafe_node_enabled:HTTP Request", safety["issues"])
+        self.assertIn("unsafe_node_enabled:Edit a file", safety["issues"])
+        self.assertIn("unsafe_connection:When clicking ‘Execute workflow’->HTTP Request", safety["issues"])
+        self.assertIn("unsafe_connection:Message a model->Edit a file", safety["issues"])
+
     async def test_upgrade_is_fail_closed_when_feature_flag_is_off(self):
         logger = MagicMock()
         with patch.dict(os.environ, {"N8N_UPGRADE_ECOMSX222_SHOPIFY": ""}, clear=False), \
