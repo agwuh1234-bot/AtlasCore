@@ -70,6 +70,18 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
             atlas_n8n._validate_arguments_against_schema({"operations": [{}, {}, {}]}, schema)
         atlas_n8n._validate_arguments_against_schema({"operations": [{}]}, schema)
 
+    def test_disable_node_operation_is_treated_as_destructive(self):
+        self.assertTrue(
+            atlas_n8n._contains_destructive_workflow_operation(
+                {"operations": [{"type": "setNodeDisabled", "nodeName": "Critical", "disabled": True}]}
+            )
+        )
+        self.assertFalse(
+            atlas_n8n._contains_destructive_workflow_operation(
+                {"operations": [{"type": "setNodeDisabled", "nodeName": "Critical", "disabled": False}]}
+            )
+        )
+
     async def test_await_mcp_fails_closed_on_timeout(self):
         async def slow():
             await asyncio.sleep(0.05)
@@ -170,6 +182,27 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {"N8N_WRITES_ENABLED": "true"}, clear=False), patch.object(atlas_n8n, "n8n_session", return_value=FakeContext()):
             os.environ.pop("N8N_DESTRUCTIVE_ENABLED", None)
             with self.assertRaises(atlas_n8n.N8NBridgeError):
+                await atlas_n8n.call_tool("update_workflow", arguments)
+        session.call_tool.assert_not_awaited()
+
+    async def test_disabling_node_requires_separate_destructive_opt_in(self):
+        tool = type("Tool", (), {"name": "update_workflow"})()
+        session = AsyncMock()
+        session.list_tools.return_value = type("Result", (), {"tools": [tool]})()
+
+        class FakeContext:
+            async def __aenter__(self):
+                return session
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        arguments = {
+            "workflowId": "1",
+            "operations": [{"type": "setNodeDisabled", "nodeName": "Critical", "disabled": True}],
+        }
+        with patch.dict(os.environ, {"N8N_WRITES_ENABLED": "true"}, clear=False), patch.object(atlas_n8n, "n8n_session", return_value=FakeContext()):
+            os.environ.pop("N8N_DESTRUCTIVE_ENABLED", None)
+            with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "destructive_disabled"):
                 await atlas_n8n.call_tool("update_workflow", arguments)
         session.call_tool.assert_not_awaited()
 
