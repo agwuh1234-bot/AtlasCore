@@ -1,15 +1,11 @@
-"""Atlas runtime entrypoint with n8n MCP integration.
-
-Keeps n8n credentials in environment variables and exposes the n8n MCP server
-to Atlas through two narrow tools: discovery and invocation.
-"""
+"""Atlas runtime entrypoint with n8n MCP integration."""
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 
 import main as atlas
 from atlas_n8n import N8NBridgeError, call_tool as n8n_call, configured as n8n_configured, list_tools as n8n_list
-
 
 N8N_TOOLS = [
     {
@@ -83,8 +79,7 @@ async def execute_tool(name, arguments, run_context=None):
         if not n8n_configured():
             return json.dumps({"ok": False, "error": "n8n_not_configured"}, ensure_ascii=False)
         try:
-            raw_arguments = arguments.get("arguments_json", "{}") or "{}"
-            parsed_arguments = json.loads(raw_arguments)
+            parsed_arguments = json.loads(arguments.get("arguments_json", "{}") or "{}")
             if not isinstance(parsed_arguments, dict):
                 raise ValueError("arguments_json must encode a JSON object")
             result = await n8n_call(arguments["name"], parsed_arguments)
@@ -96,31 +91,12 @@ async def execute_tool(name, arguments, run_context=None):
         except Exception as exc:
             atlas.logger.exception("n8n MCP call failed")
             return json.dumps({"ok": False, "error": "n8n_call_failed", "detail": type(exc).__name__}, ensure_ascii=False)
-
     return await _original_execute_tool(name, arguments, run_context)
-
 
 atlas.execute_tool = execute_tool
 
 
-@atlas.api.get("/integrations/n8n/health")
-async def n8n_health():
-    if not n8n_configured():
-        return {"ok": False, "configured": False, "error": "n8n_not_configured"}
-    try:
-        tools = await asyncio.wait_for(n8n_list(), timeout=10)
-        return {"ok": True, "configured": True, "tool_count": len(tools)}
-    except N8NBridgeError as exc:
-        atlas.logger.warning("n8n health probe failed: %s", exc)
-        return {"ok": False, "configured": True, "error": "n8n_bridge_error"}
-    except Exception:
-        atlas.logger.exception("n8n health probe failed")
-        return {"ok": False, "configured": True, "error": "n8n_probe_failed"}
-
-
-@atlas.api.on_event("startup")
-async def _probe_n8n_on_startup():
-    """One-shot live probe visible in Railway logs; never logs secrets or schemas."""
+async def _probe_n8n():
     if not n8n_configured():
         atlas.logger.warning("N8N_MCP_PROBE configured=false")
         return
@@ -132,6 +108,31 @@ async def _probe_n8n_on_startup():
     except Exception as exc:
         atlas.logger.warning("N8N_MCP_PROBE ok=false error=%s", type(exc).__name__)
 
+
+@atlas.api.get("/integrations/n8n/health")
+async def n8n_health():
+    if not n8n_configured():
+        return {"ok": False, "configured": False, "error": "n8n_not_configured"}
+    try:
+        tools = await asyncio.wait_for(n8n_list(), timeout=10)
+        return {"ok": True, "configured": True, "tool_count": len(tools)}
+    except N8NBridgeError:
+        return {"ok": False, "configured": True, "error": "n8n_bridge_error"}
+    except Exception:
+        return {"ok": False, "configured": True, "error": "n8n_probe_failed"}
+
+
+# FastAPI ignores @on_event handlers when a custom lifespan is installed.
+# Wrap Atlas' existing lifespan so the live n8n probe executes without touching main.py.
+_original_lifespan = atlas.api.router.lifespan_context
+
+@asynccontextmanager
+async def _atlas_lifespan_with_n8n(app):
+    async with _original_lifespan(app):
+        await _probe_n8n()
+        yield
+
+atlas.api.router.lifespan_context = _atlas_lifespan_with_n8n
 
 if __name__ == "__main__":
     atlas.main()
