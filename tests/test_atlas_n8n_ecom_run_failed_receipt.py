@@ -24,6 +24,24 @@ class FailedExecutionReceiptTests(unittest.TestCase):
         self.assertTrue(receipt["execution_id_present"])
         self.assertEqual(receipt["status"], "timed_out")
 
+    def test_numeric_explicit_status_fails_closed_even_with_execution_id(self):
+        receipt = run_gate._execution_receipt({"executionId": "123", "status": 200})
+        self.assertFalse(receipt["confirmed"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertIsNone(receipt["status"])
+
+    def test_boolean_explicit_status_fails_closed_even_with_execution_id(self):
+        receipt = run_gate._execution_receipt({"executionId": "123", "status": True})
+        self.assertFalse(receipt["confirmed"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertIsNone(receipt["status"])
+
+    def test_blank_explicit_status_fails_closed_even_with_execution_id(self):
+        receipt = run_gate._execution_receipt({"executionId": "123", "status": "   "})
+        self.assertFalse(receipt["confirmed"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertIsNone(receipt["status"])
+
     def test_execution_id_without_status_remains_confirmed(self):
         receipt = run_gate._execution_receipt({"executionId": "123"})
         self.assertTrue(receipt["confirmed"])
