@@ -42,7 +42,7 @@ _JWT_LIKE_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:eyJ[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})(?![A-Za-z0-9_-])"
 )
 _KNOWN_PROVIDER_SECRET_RE = re.compile(
-    r"(?<![A-Za-z0-9_-])(?:sk-ant-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})(?![A-Za-z0-9_-])"
+    r"(?<![A-Za-z0-9_-])(?:sk-ant-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|shpat_[A-Za-z0-9_-]{16,}|shpca_[A-Za-z0-9_-]{16,}|shppa_[A-Za-z0-9_-]{16,}|shpss_[A-Za-z0-9_-]{16,})(?![A-Za-z0-9_-])"
 )
 
 
