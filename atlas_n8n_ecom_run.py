@@ -34,6 +34,18 @@ def _workflow_fingerprint(details_payload: Any) -> str | None:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _receipt_identifier(value: Any) -> str | None:
+    """Normalize only scalar receipt identifiers; reject containers and booleans."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if not isinstance(value, (str, int)):
+        return None
+    normalized = str(value).strip()
+    if not normalized or len(normalized) > 256:
+        return None
+    return normalized
+
+
 def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW_ID) -> dict[str, Any]:
     """Extract only non-sensitive confirmation that n8n accepted an execution.
 
@@ -41,8 +53,10 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
     explicit failure or unknown state. Explicit statuses are fail-closed: only
     known accepted states confirm execution. If n8n returns a workflow id, it
     must match the workflow that Atlas requested; a mismatched receipt is never
-    treated as success. When status and workflow id are absent, an execution
-    identifier is still accepted as the minimal receipt.
+    treated as success. Container/boolean identifier values are rejected so a
+    malformed MCP payload cannot masquerade as a valid receipt. When status and
+    workflow id are absent, a valid scalar execution identifier is accepted as
+    the minimal receipt.
     """
     if not isinstance(payload, dict):
         return {
@@ -53,16 +67,24 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
             "workflow_id_matches": None,
         }
 
-    execution_id = payload.get("executionId") or payload.get("execution_id") or payload.get("id")
+    execution_id = _receipt_identifier(
+        payload.get("executionId") or payload.get("execution_id") or payload.get("id")
+    )
     status = payload.get("status")
     if isinstance(status, str):
         status = status.strip().lower() or None
     else:
         status = None
 
-    receipt_workflow_id = payload.get("workflowId") or payload.get("workflow_id")
-    workflow_id_present = receipt_workflow_id is not None
-    workflow_id_matches = None if not workflow_id_present else str(receipt_workflow_id) == str(expected_workflow_id)
+    raw_workflow_id = payload.get("workflowId") or payload.get("workflow_id")
+    receipt_workflow_id = _receipt_identifier(raw_workflow_id)
+    workflow_id_present = raw_workflow_id is not None
+    workflow_id_matches = None
+    if workflow_id_present:
+        workflow_id_matches = (
+            receipt_workflow_id is not None
+            and receipt_workflow_id == str(expected_workflow_id)
+        )
 
     accepted_statuses = {"running", "success", "completed", "queued", "waiting"}
     failed_statuses = {"failed", "error", "cancelled", "canceled", "crashed", "stopped"}
