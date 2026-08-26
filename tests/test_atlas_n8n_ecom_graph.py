@@ -40,6 +40,31 @@ class AtlasN8NEcomGraphSafetyTests(unittest.TestCase):
         self.assertFalse(safety["ready_for_safe_manual_run"])
         self.assertIn("unexpected_reachable_node:Unexpected Writer", safety["issues"])
 
+    def test_required_node_name_cannot_hide_wrong_type(self):
+        workflow = self._safe_workflow()
+        for node in workflow["nodes"]:
+            if node["name"] == "Message a model":
+                node["type"] = "n8n-nodes-base.github"
+                break
+
+        safety = ecom._workflow_safety_summary(workflow)
+
+        self.assertFalse(safety["ready_for_safe_manual_run"])
+        self.assertIn("unexpected_node_type:Message a model:n8n-nodes-base.github", safety["issues"])
+
+    def test_duplicate_required_node_name_blocks_manual_run(self):
+        workflow = self._safe_workflow()
+        workflow["nodes"].append({
+            "name": "Message a model1",
+            "type": "@n8n/n8n-nodes-langchain.anthropic",
+            "parameters": {},
+        })
+
+        safety = ecom._workflow_safety_summary(workflow)
+
+        self.assertFalse(safety["ready_for_safe_manual_run"])
+        self.assertIn("duplicate_node_name:Message a model1", safety["issues"])
+
 
 if __name__ == "__main__":
     unittest.main()
