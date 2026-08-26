@@ -28,7 +28,10 @@ _SENSITIVE_CANONICAL_KEYS = {
     for item in SENSITIVE_KEYS
 }
 _SENSITIVE_SUFFIXES = ("token", "secret", "password", "cookie", "credentials")
-_AUTH_VALUE_RE = re.compile(r"(?i)\b(bearer|basic)\s+[^\s,;]+")
+_AUTH_ASSIGNMENT_RE = re.compile(
+    r"(?i)(\bauthorization\b\s*[:=]\s*)(bearer|basic)\s+[^\s,;]+"
+)
+_AUTH_VALUE_RE = re.compile(r"(?i)(?<!=)\b(bearer|basic)\s+[^\s,;]+")
 _QUERY_CREDENTIAL_RE = re.compile(
     r"(?i)([?&](?:[a-z0-9_.-]*(?:token|secret|password|cookie|credentials)|api[_-]?key|apikey)=)([^&#\s]+)"
 )
@@ -62,7 +65,11 @@ def _is_sensitive_key(key: Any) -> bool:
 
 def _sanitize_string(value: str) -> str:
     """Redact common auth credentials even when embedded in a free-form string."""
-    redacted = _AUTH_VALUE_RE.sub(lambda match: f"{match.group(1)} <redacted>", value)
+    redacted = _AUTH_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)} <redacted>",
+        value,
+    )
+    redacted = _AUTH_VALUE_RE.sub(lambda match: f"{match.group(1)} <redacted>", redacted)
     redacted = _QUERY_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _PLAINTEXT_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}<redacted>@", redacted)
