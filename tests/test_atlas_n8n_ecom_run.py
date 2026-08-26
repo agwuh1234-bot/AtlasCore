@@ -69,8 +69,10 @@ class EcomRunGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(run_gate._execution_receipt(None)["confirmed"])
         self.assertFalse(run_gate._execution_receipt({})["confirmed"])
         self.assertTrue(run_gate._execution_receipt({"executionId": "123"})["confirmed"])
-        self.assertTrue(run_gate._execution_receipt({"status": "queued"})["confirmed"])
-        self.assertFalse(run_gate._execution_receipt({"status": "error"})["confirmed"])
+        self.assertFalse(run_gate._execution_receipt({"status": "queued"})["confirmed"])
+        self.assertTrue(run_gate._execution_receipt({"status": "queued", "executionId": "123"})["confirmed"])
+        self.assertTrue(run_gate._execution_receipt({"status": "success", "workflowId": run_gate.TARGET_WORKFLOW_ID})["confirmed"])
+        self.assertFalse(run_gate._execution_receipt({"status": "error", "executionId": "123"})["confirmed"])
 
     async def test_run_flag_off_never_touches_n8n(self):
         logger = MagicMock()
