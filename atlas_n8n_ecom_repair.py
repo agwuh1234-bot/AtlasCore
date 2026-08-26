@@ -8,6 +8,7 @@ from atlas_n8n_ecom import (
     _has_connection,
     _workflow_safety_summary,
 )
+from atlas_n8n_graph_safety import connection_count
 
 TRIGGER_NODE = "When clicking ‘Execute workflow’"
 
@@ -107,13 +108,21 @@ def _has_node_identity_issue(issues: list[str]) -> bool:
     return any(issue.startswith(_NODE_IDENTITY_PREFIXES) for issue in issues)
 
 
+def _duplicate_reviewed_edges(body: dict[str, Any]) -> list[str]:
+    """Return duplicate edge issues that make a one-shot repair ambiguous."""
+    issues: list[str] = []
+    for source, target in (*_REQUIRED_EDGES, *_FORBIDDEN_EDGES):
+        if connection_count(body, source, target) > 1:
+            issues.append(f"duplicate_connection:{source}->{target}")
+    return issues
+
+
 def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
     """Return a deterministic dry-run repair plan without executing n8n writes.
 
     The planner only proposes narrowly reviewed topology edits. Unknown safety
     issues remain blockers and are never guessed at. If critical node identity
-    is uncertain (missing, duplicate, or wrong type), no write operations are
-    proposed at all.
+    or reviewed edge cardinality is uncertain, no write operations are proposed.
     """
     body = _find_workflow_body(value)
     if not isinstance(body, dict):
@@ -132,6 +141,15 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
             "dry_run": True,
             "operations": [],
             "remaining_issues": safety_issues,
+        }
+
+    duplicate_issues = _duplicate_reviewed_edges(body)
+    if duplicate_issues:
+        return {
+            "ok": False,
+            "dry_run": True,
+            "operations": [],
+            "remaining_issues": list(dict.fromkeys([*safety_issues, *duplicate_issues])),
         }
 
     operations: list[dict[str, Any]] = []
