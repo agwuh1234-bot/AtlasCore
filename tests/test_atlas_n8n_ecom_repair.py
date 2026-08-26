@@ -48,7 +48,7 @@ class EcomRepairPlannerTests(unittest.TestCase):
         plan = plan_safe_ecom_repair(value)
         self.assertFalse(plan["ok"])
         self.assertEqual(plan["operations"], [])
-        self.assertIn("duplicate_connection:Message a model->Edit a file", plan["remaining_issues"])
+        self.assertIn("duplicate_physical_connection:Message a model->Edit a file", plan["remaining_issues"])
 
     def test_duplicate_required_edge_blocks_all_planned_writes(self):
         value = workflow({
@@ -59,7 +59,7 @@ class EcomRepairPlannerTests(unittest.TestCase):
         plan = plan_safe_ecom_repair(value)
         self.assertFalse(plan["ok"])
         self.assertEqual(plan["operations"], [])
-        self.assertIn("duplicate_connection:When clicking ‘Execute workflow’->Shopify Build Brief", plan["remaining_issues"])
+        self.assertIn("duplicate_physical_connection:When clicking ‘Execute workflow’->Shopify Build Brief", plan["remaining_issues"])
 
     def test_missing_required_edge_is_planned_without_execution(self):
         value = workflow({
