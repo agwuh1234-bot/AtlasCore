@@ -5,6 +5,7 @@ All MCP calls pass through the central Atlas n8n safety policy before execution.
 """
 
 import asyncio
+import copy
 import os
 from contextlib import asynccontextmanager
 
@@ -94,13 +95,9 @@ _NON_DESTRUCTIVE_PARTIAL_OPERATIONS = {
 
 def _contains_destructive_workflow_operation(arguments: dict) -> bool:
     operations = arguments.get("operations")
-    # A partial-workflow call without a valid operation list is ambiguous. Treat it
-    # as destructive so ordinary write access can never pass a malformed/new shape.
     if not isinstance(operations, list):
         return True
     for operation in operations:
-        # Partial workflow mutation is security-sensitive. Malformed or newly
-        # introduced operation shapes must not silently inherit ordinary write access.
         if not isinstance(operation, dict):
             return True
         op_type = str(operation.get("type") or "").strip().lower()
@@ -108,11 +105,7 @@ def _contains_destructive_workflow_operation(arguments: dict) -> bool:
             return True
         if op_type.startswith("remove") or op_type.startswith("delete"):
             return True
-        # Both the native n8n MCP and common n8n MCP bridges expose partial
-        # workflow-edit operations. Treat any operation that can disable a live
-        # path or replace/rewire topology as destructive, regardless of tool prefix.
         if op_type == "setnodedisabled":
-            # Re-enabling a node is a normal write; disabling it can remove a live path.
             if operation.get("disabled") is True:
                 return True
             if operation.get("disabled") is False:
@@ -127,7 +120,6 @@ def _contains_destructive_workflow_operation(arguments: dict) -> bool:
         }:
             return True
         if op_type not in _NON_DESTRUCTIVE_PARTIAL_OPERATIONS:
-            # Fail closed when n8n/MCP adds an operation Atlas has not reviewed yet.
             return True
     return False
 
@@ -138,9 +130,6 @@ def _authorize_call(tool_name: str, arguments: dict) -> None:
     if not allowed:
         raise N8NBridgeError(f"n8n MCP call blocked by policy: {reason}")
 
-    # Partial workflow tools are nominally writes, but their structured operation
-    # lists can contain destructive actions. Require the separate destructive
-    # opt-in so ordinary write permission cannot silently remove or disable topology.
     if _is_partial_workflow_tool(tool_name) and _contains_destructive_workflow_operation(arguments):
         destructive_enabled = os.environ.get("N8N_DESTRUCTIVE_ENABLED", "").strip().lower() in {
             "1", "true", "yes", "on"
@@ -168,7 +157,6 @@ def _matches_schema_type(value, expected: str) -> bool:
 
 
 def _validate_size_constraints(key: str, value, prop: dict) -> None:
-    """Apply conservative JSON Schema size bounds for strings and arrays."""
     if isinstance(value, str):
         min_length = prop.get("minLength")
         max_length = prop.get("maxLength")
@@ -195,7 +183,6 @@ def _validate_size_constraints(key: str, value, prop: dict) -> None:
 
 
 def _validate_numeric_constraints(key: str, value, prop: dict) -> None:
-    """Apply conservative JSON Schema numeric bounds before an MCP write/read call."""
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return
 
@@ -223,13 +210,7 @@ def _validate_numeric_constraints(key: str, value, prop: dict) -> None:
 
 
 def _validate_arguments_against_schema(arguments: dict, schema) -> None:
-    """Fail closed on clear top-level schema mismatches before invoking n8n.
-
-    MCP schemas can use full JSON Schema. Atlas intentionally performs only
-    conservative top-level checks here (required fields, primitive type, enum,
-    size/numeric bounds, and explicitly forbidden additional properties) rather
-    than pretending to implement the entire specification.
-    """
+    """Fail closed on clear top-level schema mismatches before invoking n8n."""
     if not isinstance(schema, dict):
         return
 
@@ -279,7 +260,14 @@ async def call_tool(name: str, arguments: dict | None = None):
     if arguments is not None and not isinstance(arguments, dict):
         raise N8NBridgeError("n8n tool arguments must be an object")
 
-    call_arguments = {} if arguments is None else arguments
+    try:
+        # Freeze the caller-provided structure before the first await. This prevents a
+        # shared mutable dict/list from changing after policy/schema checks but before
+        # the MCP client serializes the actual tool call.
+        call_arguments = {} if arguments is None else copy.deepcopy(arguments)
+    except Exception as exc:
+        raise N8NBridgeError("n8n tool arguments could not be safely snapshotted") from exc
+
     async with n8n_session() as session:
         discovered = await _await_mcp(session.list_tools(), "tool discovery")
         discovered_tool = next((tool for tool in discovered.tools if tool.name == tool_name), None)
