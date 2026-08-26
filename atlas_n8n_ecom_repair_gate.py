@@ -159,46 +159,36 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
         verify = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
     except Exception:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=verification_read_exception")
-        return {
-            "ok": False,
-            "applied": True,
-            "verified": False,
-            "reason": "post_repair_verification_exception",
-        }
+        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_verification_exception"}
 
     if _tool_call_reported_error(verify):
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=verification_read_tool_error")
-        return {
-            "ok": False,
-            "applied": True,
-            "verified": False,
-            "reason": "post_repair_verification_tool_error",
-        }
+        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_verification_tool_error"}
 
     verify_payload = _payload(verify)
-    if not _explicitly_inactive(verify_payload):
-        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=workflow_active_after_repair")
-        return {
-            "ok": False,
-            "applied": True,
-            "verified": False,
-            "reason": "workflow_active_after_repair",
-        }
-
-    verify_fingerprint = _workflow_fingerprint(verify_payload)
-    if not verify_fingerprint or verify_fingerprint == fingerprint:
-        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=workflow_unchanged_after_repair")
-        return {
-            "ok": False,
-            "applied": True,
-            "verified": False,
-            "reason": "workflow_unchanged_after_repair",
-        }
-
-    verify_plan = plan_safe_ecom_repair(verify_payload)
-    verified = bool(verify_plan.get("ok") and not verify_plan.get("operations") and not verify_plan.get("remaining_issues"))
+    verified, verify_fingerprint = _repair_state_verified(verify_payload, fingerprint)
     if not verified:
-        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false")
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=post_repair_verification_failed")
         return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_verification_failed"}
-    logger.info("ECOMSX222_REPAIR_RESULT ok=true applied=true verified=true")
+
+    try:
+        verify_second = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    except Exception:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=verification_second_read_exception")
+        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_second_verification_exception"}
+
+    if _tool_call_reported_error(verify_second):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=verification_second_read_tool_error")
+        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_second_verification_tool_error"}
+
+    verify_second_payload = _payload(verify_second)
+    second_verified, verify_second_fingerprint = _repair_state_verified(verify_second_payload, fingerprint)
+    if not second_verified:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=post_repair_second_verification_failed")
+        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_second_verification_failed"}
+    if verify_second_fingerprint != verify_fingerprint:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=post_repair_verification_changed")
+        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_verification_changed"}
+
+    logger.info("ECOMSX222_REPAIR_RESULT ok=true applied=true verified=true stable=true")
     return {"ok": True, "applied": True, "verified": True}
