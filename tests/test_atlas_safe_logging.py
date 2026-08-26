@@ -55,6 +55,20 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("Bearer <redacted>", safe["error"])
         self.assertIn("Basic <redacted>", safe["note"])
 
+    def test_sensitive_url_query_parameters_are_redacted(self):
+        safe = sanitize_for_log({
+            "url": "https://example.test/hook?token=secret-token&next=/ok&api_key=key-123",
+            "error": "request failed at https://example.test/x?access_token=abc123&mode=test",
+        })
+        rendered = str(safe)
+        for leaked in ("secret-token", "key-123", "abc123"):
+            self.assertNotIn(leaked, rendered)
+        self.assertIn("token=<redacted>", safe["url"])
+        self.assertIn("api_key=<redacted>", safe["url"])
+        self.assertIn("access_token=<redacted>", safe["error"])
+        self.assertIn("next=/ok", safe["url"])
+        self.assertIn("mode=test", safe["error"])
+
     def test_auth_scheme_values_are_redacted_fail_closed(self):
         safe = sanitize_for_log({"note": "Bearer authentication and Basic authentication are supported"})
         self.assertEqual(safe["note"], "Bearer <redacted> and Basic <redacted> are supported")
