@@ -148,6 +148,8 @@ def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
         for output_type, branches in outputs.items():
             if not isinstance(output_type, str) or not output_type:
                 issues.append(f"malformed_connection_output_type:{source}")
+            elif output_type != "main":
+                issues.append(f"unsupported_connection_output_type:{source}:{output_type}")
             if not isinstance(branches, list):
                 issues.append(f"malformed_connection_branches:{source}")
                 continue
@@ -168,6 +170,8 @@ def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
                         issues.append(f"missing_connection_edge_type:{source}")
                     elif not isinstance(edge.get("type"), str) or not edge.get("type"):
                         issues.append(f"malformed_connection_edge_type:{source}")
+                    elif edge.get("type") != "main":
+                        issues.append(f"unsupported_connection_edge_type:{source}:{edge.get('type')}")
                     if "index" not in edge:
                         issues.append(f"missing_connection_edge_index:{source}")
                     else:
