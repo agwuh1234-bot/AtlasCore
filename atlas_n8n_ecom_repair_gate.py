@@ -50,6 +50,16 @@ def _repair_state_verified(payload: Any, original_fingerprint: str) -> tuple[boo
     return True, fingerprint
 
 
+def _verification_failure_reason(state: str, *, second: bool = False) -> str:
+    if state == "active_or_unknown":
+        return "workflow_active_after_repair"
+    if state == "unchanged":
+        return "workflow_unchanged_after_repair"
+    if second:
+        return "post_repair_second_verification_failed"
+    return "post_repair_verification_failed"
+
+
 async def _reconcile_ambiguous_update(logger, original_fingerprint: str, reason: str) -> dict[str, Any]:
     """Read back twice after an ambiguous write without issuing another mutation."""
     try:
@@ -168,8 +178,9 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
     verify_payload = _payload(verify)
     verified, verify_fingerprint = _repair_state_verified(verify_payload, fingerprint)
     if not verified:
-        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=post_repair_verification_failed")
-        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_verification_failed"}
+        failure_reason = _verification_failure_reason(verify_fingerprint)
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s", failure_reason)
+        return {"ok": False, "applied": True, "verified": False, "reason": failure_reason}
 
     try:
         verify_second = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
@@ -184,8 +195,9 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
     verify_second_payload = _payload(verify_second)
     second_verified, verify_second_fingerprint = _repair_state_verified(verify_second_payload, fingerprint)
     if not second_verified:
-        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=post_repair_second_verification_failed")
-        return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_second_verification_failed"}
+        failure_reason = _verification_failure_reason(verify_second_fingerprint, second=True)
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s", failure_reason)
+        return {"ok": False, "applied": True, "verified": False, "reason": failure_reason}
     if verify_second_fingerprint != verify_fingerprint:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=post_repair_verification_changed")
         return {"ok": False, "applied": True, "verified": False, "reason": "post_repair_verification_changed"}
