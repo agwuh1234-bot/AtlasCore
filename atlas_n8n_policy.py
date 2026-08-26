@@ -46,5 +46,36 @@ def decision(name: str, declared_intent: str) -> tuple[bool, str]:
     if intent != "write":
         return False, "intent_mismatch"
     if actual == "destructive":
-        return (_flag("N8N_DESTRUCTIVE_ENABLED"), "ok" if _flag("N8N_DESTRUCTIVE_ENABLED") else "destructive_disabled")
-    return (_flag("N8N_WRITES_ENABLED"), "ok" if _flag("N8N_WRITES_ENABLED") else "writes_disabled")
+        enabled = _flag("N8N_DESTRUCTIVE_ENABLED")
+        return enabled, "ok" if enabled else "destructive_disabled"
+    enabled = _flag("N8N_WRITES_ENABLED")
+    return enabled, "ok" if enabled else "writes_disabled"
+
+
+def preflight(tools: list[dict], name: str, declared_intent: str) -> dict:
+    """Validate a proposed MCP call without executing it.
+
+    Requires an exact tool-name match from live discovery and returns only public
+    schema/policy metadata. This lets Atlas reason about a call before any side effect.
+    """
+    tool_name = (name or "").strip()
+    match = next((tool for tool in tools if str(tool.get("name") or "") == tool_name), None)
+    if match is None:
+        return {
+            "ok": False,
+            "found": False,
+            "allowed": False,
+            "classification": classify_tool(tool_name),
+            "reason": "unknown_tool",
+        }
+    allowed, reason = decision(tool_name, declared_intent)
+    return {
+        "ok": True,
+        "found": True,
+        "allowed": allowed,
+        "classification": classify_tool(tool_name),
+        "reason": reason,
+        "name": tool_name,
+        "description": match.get("description") or "",
+        "input_schema": match.get("inputSchema") or {},
+    }
