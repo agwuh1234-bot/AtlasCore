@@ -102,10 +102,10 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
         }
 
     if _tool_call_reported_error(update_result):
-        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false verified=false reason=update_tool_reported_error")
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=update_tool_reported_error")
         return {
             "ok": False,
-            "applied": False,
+            "applied": True,
             "verified": False,
             "reason": "repair_update_tool_error",
         }
