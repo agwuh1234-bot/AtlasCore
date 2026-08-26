@@ -4,6 +4,7 @@ Keeps n8n credentials in environment variables and exposes the n8n MCP server
 to Atlas through two narrow tools: discovery and invocation.
 """
 
+import asyncio
 import json
 
 import main as atlas
@@ -15,12 +16,7 @@ N8N_TOOLS = [
         "type": "function",
         "name": "n8n_list_tools",
         "description": "List the tools exposed by the connected n8n instance-level MCP server. Use this before an n8n operation when the exact MCP tool name or arguments are unknown.",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
+        "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
         "strict": True,
     },
     {
@@ -29,10 +25,7 @@ N8N_TOOLS = [
         "description": "Call one tool exposed by the connected n8n MCP server. First discover the exact tool name and schema with n8n_list_tools. arguments_json must be a JSON object encoded as a string.",
         "parameters": {
             "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "arguments_json": {"type": "string"},
-            },
+            "properties": {"name": {"type": "string"}, "arguments_json": {"type": "string"}},
             "required": ["name", "arguments_json"],
             "additionalProperties": False,
         },
@@ -59,10 +52,7 @@ _original_execute_tool = atlas.execute_tool
 
 
 def _mcp_result_to_json(result):
-    payload = {
-        "ok": not bool(getattr(result, "isError", False)),
-        "is_error": bool(getattr(result, "isError", False)),
-    }
+    payload = {"ok": not bool(getattr(result, "isError", False)), "is_error": bool(getattr(result, "isError", False))}
     structured = getattr(result, "structuredContent", None)
     if structured is not None:
         payload["structured_content"] = structured
@@ -113,15 +103,12 @@ async def execute_tool(name, arguments, run_context=None):
 atlas.execute_tool = execute_tool
 
 
-# Safe live integration probe. It deliberately exposes no endpoint URL, token,
-# workflow names, tool schemas, or other n8n data; only connectivity state and
-# the number of tools returned by the authenticated MCP server.
 @atlas.api.get("/integrations/n8n/health")
 async def n8n_health():
     if not n8n_configured():
         return {"ok": False, "configured": False, "error": "n8n_not_configured"}
     try:
-        tools = await n8n_list()
+        tools = await asyncio.wait_for(n8n_list(), timeout=10)
         return {"ok": True, "configured": True, "tool_count": len(tools)}
     except N8NBridgeError as exc:
         atlas.logger.warning("n8n health probe failed: %s", exc)
@@ -129,6 +116,21 @@ async def n8n_health():
     except Exception:
         atlas.logger.exception("n8n health probe failed")
         return {"ok": False, "configured": True, "error": "n8n_probe_failed"}
+
+
+@atlas.api.on_event("startup")
+async def _probe_n8n_on_startup():
+    """One-shot live probe visible in Railway logs; never logs secrets or schemas."""
+    if not n8n_configured():
+        atlas.logger.warning("N8N_MCP_PROBE configured=false")
+        return
+    try:
+        tools = await asyncio.wait_for(n8n_list(), timeout=10)
+        atlas.logger.info("N8N_MCP_PROBE ok=true tool_count=%d", len(tools))
+    except asyncio.TimeoutError:
+        atlas.logger.warning("N8N_MCP_PROBE ok=false error=timeout")
+    except Exception as exc:
+        atlas.logger.warning("N8N_MCP_PROBE ok=false error=%s", type(exc).__name__)
 
 
 if __name__ == "__main__":
