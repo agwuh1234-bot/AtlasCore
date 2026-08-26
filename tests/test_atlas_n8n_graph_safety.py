@@ -30,6 +30,13 @@ class N8NGraphSafetyTests(unittest.TestCase):
     def test_shape_validator_accepts_canonical_main_edge(self):
         self.assertEqual(connection_shape_issues(body_with_edges(("A", "B"))), [])
 
+    def test_shape_validator_blocks_duplicate_physical_edge_anywhere(self):
+        body = body_with_edges(("A", "B"), ("A", "B"), ("X", "Y"), ("X", "Y"))
+        self.assertEqual(
+            connection_shape_issues(body),
+            ["duplicate_physical_connection:A->B", "duplicate_physical_connection:X->Y"],
+        )
+
     def test_shape_validator_blocks_nonzero_target_input_index(self):
         body = {"connections": {"A": {"main": [[{"node": "B", "type": "main", "index": 1}]]}}}
         self.assertEqual(connection_shape_issues(body), ["unsupported_connection_edge_index:A:1"])
