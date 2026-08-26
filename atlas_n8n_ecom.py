@@ -303,7 +303,7 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
         )
 
         result = await call_tool("update_workflow", {"workflowId": TARGET_WORKFLOW_ID, "operations": operations})
-        result_payload = _payload(result)
+        update_result_present = result is not None
 
         verify_result = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
         verify = _payload(verify_result)
@@ -322,7 +322,7 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
                 "issues": safety["issues"],
                 "nodes": [{"name": n.get("name"), "type": n.get("type"), "disabled": n.get("disabled")} for n in nodes],
                 "connections": body.get("connections", {}),
-                "update_result": result_payload,
+                "update_result_present": update_result_present,
             }, ensure_ascii=False, default=str)[:20000],
         )
     except Exception as exc:
