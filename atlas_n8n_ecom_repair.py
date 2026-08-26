@@ -118,9 +118,9 @@ def _duplicate_reviewed_edges(body: dict[str, Any]) -> list[str]:
 
 
 def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
-    """Return references to missing nodes anywhere in the workflow graph.
+    """Return structural connection issues anywhere in the workflow graph.
 
-    Repairs are intentionally blocked even when a dangling edge sits outside the
+    Repairs are intentionally blocked even when a malformed edge sits outside the
     manual-trigger path. Writing into a structurally inconsistent workflow makes
     the outcome harder to reason about and could hide future activation hazards.
     """
@@ -145,7 +145,9 @@ def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
         if not isinstance(outputs, dict):
             issues.append(f"malformed_connection_map:{source}")
             continue
-        for branches in outputs.values():
+        for output_type, branches in outputs.items():
+            if not isinstance(output_type, str) or not output_type:
+                issues.append(f"malformed_connection_output_type:{source}")
             if not isinstance(branches, list):
                 issues.append(f"malformed_connection_branches:{source}")
                 continue
@@ -162,6 +164,12 @@ def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
                         issues.append(f"malformed_connection_target:{source}")
                     elif target not in known_names:
                         issues.append(f"dangling_connection_target:{source}->{target}")
+                    if "type" in edge and (not isinstance(edge.get("type"), str) or not edge.get("type")):
+                        issues.append(f"malformed_connection_edge_type:{source}")
+                    if "index" in edge:
+                        index = edge.get("index")
+                        if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+                            issues.append(f"malformed_connection_edge_index:{source}")
 
     return list(dict.fromkeys(issues))
 
