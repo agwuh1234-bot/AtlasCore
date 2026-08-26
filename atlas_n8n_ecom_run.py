@@ -49,14 +49,12 @@ def _receipt_identifier(value: Any) -> str | None:
 def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW_ID) -> dict[str, Any]:
     """Extract only non-sensitive confirmation that n8n accepted an execution.
 
-    An execution identifier alone is not sufficient if n8n also reports an
-    explicit failure, unknown state, or malformed status value. Explicit statuses
-    are fail-closed: only known accepted string states confirm execution. If n8n
-    returns a workflow id, it must match the workflow that Atlas requested; a
-    mismatched receipt is never treated as success. Container/boolean identifier
-    values are rejected so a malformed MCP payload cannot masquerade as a valid
-    receipt. Only when the status field is truly absent may a valid scalar
-    execution identifier act as the minimal receipt.
+    Explicit statuses are fail-closed: only known accepted string states are
+    eligible. A bare status string is never enough to confirm execution; it must
+    be corroborated by either a valid execution identifier or an explicit matching
+    workflow identifier. This prevents malformed or stale MCP responses such as
+    ``{"status": "success"}`` from being mistaken for proof that the requested
+    workflow actually ran.
     """
     if not isinstance(payload, dict):
         return {
@@ -91,6 +89,7 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
 
     accepted_statuses = {"running", "success", "completed", "queued", "waiting"}
     failed_statuses = {"failed", "error", "cancelled", "canceled", "crashed", "stopped"}
+    corroborated = bool(execution_id) or workflow_id_matches is True
     if workflow_id_matches is False:
         confirmed = False
     elif status_present and not status_valid:
@@ -98,7 +97,7 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
     elif status in failed_statuses:
         confirmed = False
     elif status_present:
-        confirmed = status in accepted_statuses
+        confirmed = status in accepted_statuses and corroborated
     else:
         confirmed = bool(execution_id)
     return {
