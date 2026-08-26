@@ -70,6 +70,32 @@ class EcomRepairPlannerTests(unittest.TestCase):
         self.assertIn("unexpected_reachable_node:Mystery", plan["remaining_issues"])
         self.assertNotIn("unexpected_reachable_node:Edit a file", plan["remaining_issues"])
 
+    def test_missing_required_node_blocks_all_planned_writes(self):
+        value = workflow({
+            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
+            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+        })
+        value["nodes"] = [node for node in value["nodes"] if node["name"] != "Shopify Build Brief"]
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertIn("missing_node:Shopify Build Brief", plan["remaining_issues"])
+
+    def test_wrong_required_node_type_blocks_all_planned_writes(self):
+        value = workflow({
+            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
+            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
+            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "Message a model": {"main": [[{"node": "Edit a file"}]]},
+        })
+        for node in value["nodes"]:
+            if node["name"] == "Message a model":
+                node["type"] = "n8n-nodes-base.github"
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertTrue(any(issue.startswith("unexpected_node_type:Message a model:") for issue in plan["remaining_issues"]))
+
     def test_malformed_body_fails_closed(self):
         plan = plan_safe_ecom_repair({"nodes": []})
         self.assertFalse(plan["ok"])
