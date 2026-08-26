@@ -141,6 +141,51 @@ def _add_connection_if_missing(
         operations.append({"type": "addConnection", "source": source, "target": target})
 
 
+def _workflow_safety_summary(value: Any) -> dict[str, Any]:
+    body = _find_workflow_body(value) or {}
+    nodes = _collect_nodes(value)
+    by_name = {str(node.get("name")): node for node in nodes}
+    issues: list[str] = []
+
+    required_nodes = [
+        "When clicking ‘Execute workflow’",
+        SHOPIFY_BRIEF_NODE,
+        "Message a model1",
+        "Message a model",
+    ]
+    for name in required_nodes:
+        if name not in by_name:
+            issues.append(f"missing_node:{name}")
+
+    required_edges = [
+        ("When clicking ‘Execute workflow’", SHOPIFY_BRIEF_NODE),
+        (SHOPIFY_BRIEF_NODE, "Message a model1"),
+        ("Message a model1", "Message a model"),
+    ]
+    for source, target in required_edges:
+        if not _has_connection(body, source, target):
+            issues.append(f"missing_connection:{source}->{target}")
+
+    forbidden_edges = [
+        ("When clicking ‘Execute workflow’", "HTTP Request"),
+        ("HTTP Request", "Message a model1"),
+        ("Message a model", "Edit a file"),
+    ]
+    for source, target in forbidden_edges:
+        if _has_connection(body, source, target):
+            issues.append(f"unsafe_connection:{source}->{target}")
+
+    for name in ("HTTP Request", "HTTP Request1", "Edit a file"):
+        node = by_name.get(name)
+        if node is not None and node.get("disabled") is not True:
+            issues.append(f"unsafe_node_enabled:{name}")
+
+    return {
+        "ready_for_safe_manual_run": not issues,
+        "issues": issues,
+    }
+
+
 async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
     if not _enabled("N8N_UPGRADE_ECOMSX222_SHOPIFY"):
         return
@@ -221,21 +266,8 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
         verify = _payload(verify_result)
         body = _find_workflow_body(verify) or {}
         nodes = _collect_nodes(verify)
-        by_name = {str(node.get("name")): node for node in nodes}
-        topology_ok = (
-            _has_connection(body, "When clicking ‘Execute workflow’", SHOPIFY_BRIEF_NODE)
-            and _has_connection(body, SHOPIFY_BRIEF_NODE, "Message a model1")
-            and not _has_connection(body, "When clicking ‘Execute workflow’", "HTTP Request")
-            and not _has_connection(body, "HTTP Request", "Message a model1")
-            and not _has_connection(body, "Message a model", "Edit a file")
-        )
-        verified = (
-            SHOPIFY_BRIEF_NODE in by_name
-            and by_name.get("HTTP Request", {}).get("disabled") is True
-            and by_name.get("HTTP Request1", {}).get("disabled") is True
-            and by_name.get("Edit a file", {}).get("disabled") is True
-            and topology_ok
-        )
+        safety = _workflow_safety_summary(verify)
+        verified = safety["ready_for_safe_manual_run"]
         logger.info(
             "ECOMSX222_SHOPIFY_RESULT %s",
             json.dumps({
@@ -243,7 +275,8 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
                 "workflow_id": TARGET_WORKFLOW_ID,
                 "active": body.get("active"),
                 "node_count": len(nodes),
-                "topology_ok": topology_ok,
+                "ready_for_safe_manual_run": safety["ready_for_safe_manual_run"],
+                "issues": safety["issues"],
                 "nodes": [{"name": n.get("name"), "type": n.get("type"), "disabled": n.get("disabled")} for n in nodes],
                 "connections": body.get("connections", {}),
                 "update_result": result_payload,
@@ -275,12 +308,15 @@ async def maybe_inspect_ecomsx222(logger) -> None:
         details_payload = _payload(details)
         body = _find_workflow_body(details_payload) or {}
         nodes = _collect_nodes(details_payload)
+        safety = _workflow_safety_summary(details_payload)
         summary = {
             "ok": True,
             "workflow_id": workflow_id,
             "name": workflow.get("name") or TARGET_WORKFLOW,
             "active": body.get("active"),
             "node_count": len(nodes),
+            "ready_for_safe_manual_run": safety["ready_for_safe_manual_run"],
+            "issues": safety["issues"],
             "nodes": nodes,
             "connections": body.get("connections", {}),
         }
