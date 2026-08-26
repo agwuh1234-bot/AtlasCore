@@ -31,13 +31,16 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
     Atlas write operations currently model only the canonical n8n connection form:
     a string source, ``main`` output type, output branch 0, string target,
     ``main`` edge type and target input index 0. Anything else is deliberately
-    surfaced instead of being silently normalized or guessed at.
+    surfaced instead of being silently normalized or guessed at. Exact duplicate
+    physical edges are also rejected globally because one-shot repair operations
+    cannot safely infer which duplicate instance should be retained or removed.
     """
     connections = body.get("connections")
     if not isinstance(connections, dict):
         return ["malformed_connections"]
 
     issues: list[str] = []
+    seen_edges: set[tuple[str, str, str, int, int]] = set()
     for source, outputs in connections.items():
         if not isinstance(source, str) or not source:
             issues.append("malformed_connection_source")
@@ -89,6 +92,23 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
                         issues.append(f"malformed_connection_edge_index:{source}")
                     elif target_index != 0:
                         issues.append(f"unsupported_connection_edge_index:{source}:{target_index}")
+
+                    if (
+                        isinstance(output_type, str)
+                        and output_type
+                        and isinstance(target, str)
+                        and target
+                        and isinstance(edge_type, str)
+                        and edge_type
+                        and isinstance(target_index, int)
+                        and not isinstance(target_index, bool)
+                        and target_index >= 0
+                    ):
+                        identity = (source, output_type, target, branch_index, target_index)
+                        if identity in seen_edges:
+                            issues.append(f"duplicate_physical_connection:{source}->{target}")
+                        else:
+                            seen_edges.add(identity)
 
     return list(dict.fromkeys(issues))
 
