@@ -69,6 +69,17 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("next=/ok", safe["url"])
         self.assertIn("mode=test", safe["error"])
 
+    def test_standalone_jwt_like_tokens_are_redacted(self):
+        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlMTIz"
+        safe = sanitize_for_log({
+            "error": f"upstream returned session {token} during handshake",
+            "note": "ordinary.version.string should remain visible",
+        })
+        rendered = str(safe)
+        self.assertNotIn(token, rendered)
+        self.assertIn("<redacted-jwt>", safe["error"])
+        self.assertEqual(safe["note"], "ordinary.version.string should remain visible")
+
     def test_auth_scheme_values_are_redacted_fail_closed(self):
         safe = sanitize_for_log({"note": "Bearer authentication and Basic authentication are supported"})
         self.assertEqual(safe["note"], "Bearer <redacted> and Basic <redacted> are supported")
