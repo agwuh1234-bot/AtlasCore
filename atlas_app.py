@@ -3,9 +3,19 @@
 import os
 
 from atlas_entry import atlas
+from atlas_executor_api import build_executor_router
 from atlas_n8n_executor import build_n8n_executor_router
 
 api = atlas.api
+
+# General authenticated executor, including Claude.
+api.include_router(
+    build_executor_router(
+        bridge_key=atlas.ATLAS_BRIDGE_KEY,
+    )
+)
+
+# Restricted n8n MCP executor for Atlas/ChatGPT automation.
 api.include_router(
     build_n8n_executor_router(
         bridge_key=atlas.ATLAS_BRIDGE_KEY,
