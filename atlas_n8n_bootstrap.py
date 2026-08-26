@@ -10,6 +10,7 @@ from atlas_n8n_policy import decision
 WORKFLOW_NAME = "Atlas ChatGPT Access Test"
 WORKFLOW_ID = "IHegwc8h7cZBWOaZ"
 SECOND_NODE_NAME = "Atlas Second Node"
+PING_NODE_NAME = "Atlas Ping"
 
 WORKFLOW_CODE = r"""
 import { workflow, trigger, node } from '@n8n/workflow-sdk';
@@ -202,3 +203,61 @@ async def maybe_add_second_test_node(logger) -> None:
             logger.warning("N8N_SECOND_NODE_RESULT ok=false error=verification_failed workflow_id=%s node=%s", WORKFLOW_ID, SECOND_NODE_NAME)
     except Exception as exc:
         logger.exception("N8N_SECOND_NODE_RESULT ok=false error=%s", type(exc).__name__)
+
+
+async def maybe_add_ping_node(logger) -> None:
+    if not _enabled("N8N_BOOTSTRAP_PING_NODE"):
+        return
+    if not configured():
+        logger.warning("N8N_PING_NODE_RESULT ok=false error=n8n_not_configured")
+        return
+
+    allowed, reason = decision("update_workflow", "write")
+    if not allowed:
+        logger.warning("N8N_PING_NODE_RESULT ok=false error=policy_blocked reason=%s", reason)
+        return
+
+    try:
+        details = await call_tool("get_workflow_details", {"workflowId": WORKFLOW_ID, "detailLevel": "full"})
+        details_payload = _extract_json_payload(details)
+        if _contains_node(details_payload, PING_NODE_NAME):
+            logger.info("N8N_PING_NODE_RESULT ok=true action=existing workflow_id=%s node=%s verified=true", WORKFLOW_ID, PING_NODE_NAME)
+            return
+
+        node_parameters = {
+            "assignments": {
+                "assignments": [
+                    {"id": "atlas-ping", "name": "ping", "value": "pong", "type": "string"},
+                    {"id": "atlas-status", "name": "status", "value": "n8n write access confirmed", "type": "string"}
+                ]
+            }
+        }
+        result = await call_tool(
+            "update_workflow",
+            {
+                "workflowId": WORKFLOW_ID,
+                "operations": [
+                    {
+                        "type": "addNode",
+                        "node": {
+                            "name": PING_NODE_NAME,
+                            "type": "n8n-nodes-base.set",
+                            "typeVersion": 3.4,
+                            "parameters": node_parameters,
+                            "position": [950, 300],
+                        },
+                    },
+                    {"type": "addConnection", "source": SECOND_NODE_NAME, "target": PING_NODE_NAME},
+                ],
+            },
+        )
+        result_payload = _extract_json_payload(result)
+        verify = await call_tool("get_workflow_details", {"workflowId": WORKFLOW_ID, "detailLevel": "full"})
+        verified = _contains_node(_extract_json_payload(verify), PING_NODE_NAME)
+        if verified:
+            node_count = result_payload.get("nodeCount") if isinstance(result_payload, dict) else None
+            logger.info("N8N_PING_NODE_RESULT ok=true action=created workflow_id=%s node=%s node_count=%s verified=true", WORKFLOW_ID, PING_NODE_NAME, node_count)
+        else:
+            logger.warning("N8N_PING_NODE_RESULT ok=false error=verification_failed workflow_id=%s node=%s", WORKFLOW_ID, PING_NODE_NAME)
+    except Exception as exc:
+        logger.exception("N8N_PING_NODE_RESULT ok=false error=%s", type(exc).__name__)
