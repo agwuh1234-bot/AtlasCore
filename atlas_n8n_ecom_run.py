@@ -46,27 +46,46 @@ def _receipt_identifier(value: Any) -> str | None:
     return normalized
 
 
+def _receipt_alias_identifier(payload: dict[str, Any], keys: tuple[str, ...]) -> tuple[str | None, bool, bool]:
+    """Return one normalized alias value and whether aliases were present/conflicting.
+
+    Multiple aliases are accepted only when every present value is valid and all
+    normalize to the same identifier. This prevents contradictory MCP receipts
+    from being treated as confirmation simply because the first alias looked sane.
+    """
+    present_values = [payload[key] for key in keys if key in payload]
+    if not present_values:
+        return None, False, False
+    normalized = [_receipt_identifier(value) for value in present_values]
+    if any(value is None for value in normalized):
+        return None, True, True
+    unique = set(normalized)
+    if len(unique) != 1:
+        return None, True, True
+    return normalized[0], True, False
+
+
 def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW_ID) -> dict[str, Any]:
     """Extract only non-sensitive confirmation that n8n accepted an execution.
 
     Explicit statuses are fail-closed: only known accepted string states are
     eligible. A bare status string is never enough to confirm execution; it must
     be corroborated by either a valid execution identifier or an explicit matching
-    workflow identifier. This prevents malformed or stale MCP responses such as
-    ``{"status": "success"}`` from being mistaken for proof that the requested
-    workflow actually ran.
+    workflow identifier. Contradictory identifier aliases fail closed.
     """
     if not isinstance(payload, dict):
         return {
             "confirmed": False,
             "execution_id_present": False,
+            "execution_id_conflict": False,
             "status": None,
             "workflow_id_present": False,
             "workflow_id_matches": None,
+            "workflow_id_conflict": False,
         }
 
-    execution_id = _receipt_identifier(
-        payload.get("executionId") or payload.get("execution_id") or payload.get("id")
+    execution_id, execution_id_present, execution_id_conflict = _receipt_alias_identifier(
+        payload, ("executionId", "execution_id", "id")
     )
 
     status_present = "status" in payload
@@ -77,20 +96,23 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
         status = raw_status.strip().lower() or None
         status_valid = status is not None
 
-    raw_workflow_id = payload.get("workflowId") or payload.get("workflow_id")
-    receipt_workflow_id = _receipt_identifier(raw_workflow_id)
-    workflow_id_present = raw_workflow_id is not None
+    receipt_workflow_id, workflow_id_present, workflow_id_conflict = _receipt_alias_identifier(
+        payload, ("workflowId", "workflow_id")
+    )
     workflow_id_matches = None
     if workflow_id_present:
         workflow_id_matches = (
-            receipt_workflow_id is not None
+            not workflow_id_conflict
+            and receipt_workflow_id is not None
             and receipt_workflow_id == str(expected_workflow_id)
         )
 
     accepted_statuses = {"running", "success", "completed", "queued", "waiting"}
     failed_statuses = {"failed", "error", "cancelled", "canceled", "crashed", "stopped"}
     corroborated = bool(execution_id) or workflow_id_matches is True
-    if workflow_id_matches is False:
+    if execution_id_conflict or workflow_id_conflict:
+        confirmed = False
+    elif workflow_id_matches is False:
         confirmed = False
     elif status_present and not status_valid:
         confirmed = False
@@ -102,10 +124,12 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
         confirmed = bool(execution_id)
     return {
         "confirmed": confirmed,
-        "execution_id_present": bool(execution_id),
+        "execution_id_present": execution_id_present,
+        "execution_id_conflict": execution_id_conflict,
         "status": status,
         "workflow_id_present": workflow_id_present,
         "workflow_id_matches": workflow_id_matches,
+        "workflow_id_conflict": workflow_id_conflict,
     }
 
 
@@ -225,8 +249,10 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
                         "reason": "execution_result_unconfirmed",
                         "workflow_id": TARGET_WORKFLOW_ID,
                         "status": receipt["status"],
+                        "execution_id_conflict": receipt["execution_id_conflict"],
                         "receipt_workflow_id_present": receipt["workflow_id_present"],
                         "receipt_workflow_id_matches": receipt["workflow_id_matches"],
+                        "workflow_id_conflict": receipt["workflow_id_conflict"],
                     },
                     ensure_ascii=False,
                 ),
