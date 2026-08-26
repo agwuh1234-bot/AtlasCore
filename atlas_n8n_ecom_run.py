@@ -25,6 +25,18 @@ def _enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _tool_call_reported_error(value: Any) -> bool:
+    """Recognize MCP tool error envelopes before inspecting their payload.
+
+    A tool may return structured data that looks superficially like a valid
+    receipt even while the MCP envelope marks the call as failed. Such results
+    must never be treated as a successful preflight read or execution.
+    """
+    if isinstance(value, dict):
+        return value.get("isError") is True or value.get("is_error") is True
+    return getattr(value, "isError", False) is True or getattr(value, "is_error", False) is True
+
+
 def _workflow_fingerprint(details_payload: Any) -> str | None:
     """Return a stable digest of the live workflow body without logging content."""
     body = _find_workflow_body(details_payload)
@@ -173,6 +185,9 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
             "get_workflow_details",
             {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"},
         )
+        if _tool_call_reported_error(details):
+            logger.warning("ECOMSX222_RUN_RESULT ok=false executed=false reason=preflight_first_read_tool_error")
+            return {"ok": False, "executed": False, "reason": "preflight_first_read_tool_error"}
         details_payload = _payload(details)
         readiness = execution_readiness(details_payload)
         first_fingerprint = _workflow_fingerprint(details_payload)
@@ -201,6 +216,9 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
             "get_workflow_details",
             {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"},
         )
+        if _tool_call_reported_error(confirm):
+            logger.warning("ECOMSX222_RUN_RESULT ok=false executed=false reason=preflight_second_read_tool_error")
+            return {"ok": False, "executed": False, "reason": "preflight_second_read_tool_error"}
         confirm_payload = _payload(confirm)
         confirm_readiness = execution_readiness(confirm_payload)
         second_fingerprint = _workflow_fingerprint(confirm_payload)
@@ -237,6 +255,14 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
 
         execution_attempted = True
         result = await call_tool(EXECUTE_TOOL, {"workflowId": TARGET_WORKFLOW_ID})
+        if _tool_call_reported_error(result):
+            logger.warning("ECOMSX222_RUN_RESULT ok=false executed=true reason=execution_tool_error")
+            return {
+                "ok": False,
+                "executed": True,
+                "reason": "execution_tool_error",
+                "workflow_id": TARGET_WORKFLOW_ID,
+            }
         payload = _payload(result)
         receipt = _execution_receipt(payload)
         if not receipt["confirmed"]:
