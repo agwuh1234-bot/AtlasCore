@@ -4,6 +4,7 @@ Secrets are read only from environment variables. Never commit the n8n access to
 All MCP calls pass through the central Atlas n8n safety policy before execution.
 """
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -25,6 +26,23 @@ def configured() -> bool:
     return bool(N8N_MCP_URL and N8N_MCP_TOKEN)
 
 
+def _timeout_seconds() -> float:
+    """Return a bounded MCP operation timeout without trusting environment input."""
+    raw = os.environ.get("N8N_MCP_TIMEOUT_SECONDS", "20").strip()
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = 20.0
+    return min(120.0, max(1.0, value))
+
+
+async def _await_mcp(awaitable, operation: str):
+    try:
+        return await asyncio.wait_for(awaitable, timeout=_timeout_seconds())
+    except TimeoutError as exc:
+        raise N8NBridgeError(f"n8n MCP {operation} timed out") from exc
+
+
 @asynccontextmanager
 async def n8n_session():
     if not configured():
@@ -33,13 +51,13 @@ async def n8n_session():
     headers = {"Authorization": f"Bearer {N8N_MCP_TOKEN}"}
     async with streamablehttp_client(N8N_MCP_URL, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
-            await session.initialize()
+            await _await_mcp(session.initialize(), "initialize")
             yield session
 
 
 async def list_tools():
     async with n8n_session() as session:
-        result = await session.list_tools()
+        result = await _await_mcp(session.list_tools(), "tool discovery")
         return [
             {
                 "name": tool.name,
@@ -99,9 +117,9 @@ async def call_tool(name: str, arguments: dict | None = None):
 
     call_arguments = {} if arguments is None else arguments
     async with n8n_session() as session:
-        discovered = await session.list_tools()
+        discovered = await _await_mcp(session.list_tools(), "tool discovery")
         available_names = {tool.name for tool in discovered.tools}
         if tool_name not in available_names:
             raise N8NBridgeError(f"Unknown n8n MCP tool: {tool_name}")
         _authorize_call(tool_name, call_arguments)
-        return await session.call_tool(tool_name, call_arguments)
+        return await _await_mcp(session.call_tool(tool_name, call_arguments), f"tool call {tool_name}")
