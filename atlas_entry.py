@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 import main as atlas
 from atlas_n8n import N8NBridgeError, call_tool as n8n_call, configured as n8n_configured, list_tools as n8n_list
-from atlas_n8n_bootstrap import maybe_bootstrap_test_workflow
+from atlas_n8n_bootstrap import maybe_add_second_test_node, maybe_bootstrap_test_workflow
 from atlas_n8n_policy import decision as n8n_policy_decision, preflight as n8n_preflight
 
 N8N_TOOLS = [
@@ -178,8 +178,6 @@ async def n8n_health():
         return {"ok": False, "configured": True, "error": "n8n_probe_failed"}
 
 
-# FastAPI ignores @on_event handlers when a custom lifespan is installed.
-# Wrap Atlas' existing lifespan so the live n8n probe executes without touching main.py.
 _original_lifespan = atlas.api.router.lifespan_context
 
 @asynccontextmanager
@@ -187,6 +185,7 @@ async def _atlas_lifespan_with_n8n(app):
     async with _original_lifespan(app):
         await _probe_n8n()
         await maybe_bootstrap_test_workflow(atlas.logger)
+        await maybe_add_second_test_node(atlas.logger)
         yield
 
 atlas.api.router.lifespan_context = _atlas_lifespan_with_n8n
