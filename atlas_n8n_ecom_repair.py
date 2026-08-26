@@ -164,9 +164,13 @@ def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
                         issues.append(f"malformed_connection_target:{source}")
                     elif target not in known_names:
                         issues.append(f"dangling_connection_target:{source}->{target}")
-                    if "type" in edge and (not isinstance(edge.get("type"), str) or not edge.get("type")):
+                    if "type" not in edge:
+                        issues.append(f"missing_connection_edge_type:{source}")
+                    elif not isinstance(edge.get("type"), str) or not edge.get("type"):
                         issues.append(f"malformed_connection_edge_type:{source}")
-                    if "index" in edge:
+                    if "index" not in edge:
+                        issues.append(f"missing_connection_edge_index:{source}")
+                    else:
                         index = edge.get("index")
                         if isinstance(index, bool) or not isinstance(index, int) or index < 0:
                             issues.append(f"malformed_connection_edge_index:{source}")
