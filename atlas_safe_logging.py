@@ -33,7 +33,7 @@ _QUERY_CREDENTIAL_RE = re.compile(
     r"(?i)([?&](?:access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|token|secret|password|cookie)=)([^&#\s]+)"
 )
 _PLAINTEXT_CREDENTIAL_RE = re.compile(
-    r"(?i)(\b(?:access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|token|secret|password|cookie)\b\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)"
+    r"(?i)(\b(?:access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|token|secret|password|cookie)\b\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&#]+)"
 )
 _URL_USERINFO_RE = re.compile(
     r"(?i)\b([a-z][a-z0-9+.-]*://)([^/@\s:]+):([^/@\s]+)@"
