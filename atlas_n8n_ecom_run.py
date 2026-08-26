@@ -38,8 +38,9 @@ def _execution_receipt(payload: Any) -> dict[str, Any]:
     """Extract only non-sensitive confirmation that n8n accepted an execution.
 
     An execution identifier alone is not sufficient if n8n also reports an
-    explicit failure state. This keeps the gate fail-closed for contradictory
-    receipts such as {executionId: ..., status: "failed"}.
+    explicit failure or unknown state. Explicit statuses are fail-closed: only
+    known accepted states confirm execution. When status is absent, an execution
+    identifier is still accepted as the minimal receipt.
     """
     if not isinstance(payload, dict):
         return {"confirmed": False, "execution_id_present": False, "status": None}
@@ -55,8 +56,10 @@ def _execution_receipt(payload: Any) -> dict[str, Any]:
     failed_statuses = {"failed", "error", "cancelled", "canceled", "crashed", "stopped"}
     if status in failed_statuses:
         confirmed = False
+    elif status is not None:
+        confirmed = status in accepted_statuses
     else:
-        confirmed = bool(execution_id) or status in accepted_statuses
+        confirmed = bool(execution_id)
     return {
         "confirmed": confirmed,
         "execution_id_present": bool(execution_id),
