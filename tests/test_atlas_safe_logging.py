@@ -55,9 +55,9 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("Bearer <redacted>", safe["error"])
         self.assertIn("Basic <redacted>", safe["note"])
 
-    def test_auth_scheme_words_without_credentials_are_preserved(self):
+    def test_auth_scheme_values_are_redacted_fail_closed(self):
         safe = sanitize_for_log({"note": "Bearer authentication and Basic authentication are supported"})
-        self.assertEqual(safe["note"], "Bearer authentication and Basic authentication are supported")
+        self.assertEqual(safe["note"], "Bearer <redacted> and Basic <redacted> are supported")
 
     def test_large_and_deep_payloads_are_bounded(self):
         value = {
