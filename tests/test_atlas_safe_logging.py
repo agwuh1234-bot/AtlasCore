@@ -69,6 +69,17 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("next=/ok", safe["url"])
         self.assertIn("mode=test", safe["error"])
 
+    def test_url_userinfo_credentials_are_redacted(self):
+        safe = sanitize_for_log({
+            "url": "https://atlas-user:super-secret@example.test/api",
+            "error": "failed to reach postgres://dbuser:p%40ss@db.example.test:5432/app",
+        })
+        rendered = str(safe)
+        for leaked in ("atlas-user", "super-secret", "dbuser", "p%40ss"):
+            self.assertNotIn(leaked, rendered)
+        self.assertEqual(safe["url"], "https://<redacted>@example.test/api")
+        self.assertIn("postgres://<redacted>@db.example.test:5432/app", safe["error"])
+
     def test_standalone_jwt_like_tokens_are_redacted(self):
         token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlMTIz"
         safe = sanitize_for_log({
