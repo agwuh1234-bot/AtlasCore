@@ -34,6 +34,27 @@ def _workflow_fingerprint(details_payload: Any) -> str | None:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _execution_receipt(payload: Any) -> dict[str, Any]:
+    """Extract only non-sensitive confirmation that n8n accepted an execution."""
+    if not isinstance(payload, dict):
+        return {"confirmed": False, "execution_id_present": False, "status": None}
+
+    execution_id = payload.get("executionId") or payload.get("execution_id") or payload.get("id")
+    status = payload.get("status")
+    if isinstance(status, str):
+        status = status.strip().lower() or None
+    else:
+        status = None
+
+    accepted_statuses = {"running", "success", "completed", "queued", "waiting"}
+    confirmed = bool(execution_id) or status in accepted_statuses
+    return {
+        "confirmed": confirmed,
+        "execution_id_present": bool(execution_id),
+        "status": status,
+    }
+
+
 def execution_readiness(details_payload: Any) -> dict[str, Any]:
     """Return a side-effect-free decision for whether ecomSX222 is safe to run."""
     body = _find_workflow_body(details_payload) or {}
@@ -143,6 +164,27 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
 
         result = await call_tool(EXECUTE_TOOL, {"workflowId": TARGET_WORKFLOW_ID})
         payload = _payload(result)
+        receipt = _execution_receipt(payload)
+        if not receipt["confirmed"]:
+            logger.warning(
+                "ECOMSX222_RUN_RESULT %s",
+                json.dumps(
+                    {
+                        "ok": False,
+                        "executed": True,
+                        "reason": "execution_result_unconfirmed",
+                        "workflow_id": TARGET_WORKFLOW_ID,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+            return {
+                "ok": False,
+                "executed": True,
+                "reason": "execution_result_unconfirmed",
+                "workflow_id": TARGET_WORKFLOW_ID,
+            }
+
         logger.info(
             "ECOMSX222_RUN_RESULT %s",
             json.dumps(
@@ -150,7 +192,8 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
                     "ok": True,
                     "executed": True,
                     "workflow_id": TARGET_WORKFLOW_ID,
-                    "result_present": payload is not None,
+                    "execution_id_present": receipt["execution_id_present"],
+                    "status": receipt["status"],
                 },
                 ensure_ascii=False,
             ),
