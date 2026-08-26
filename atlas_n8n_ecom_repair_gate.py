@@ -36,33 +36,58 @@ def _tool_call_reported_error(value: Any) -> bool:
     return getattr(value, "isError", False) is True or getattr(value, "is_error", False) is True
 
 
+def _repair_state_verified(payload: Any, original_fingerprint: str) -> tuple[bool, str]:
+    if not _explicitly_inactive(payload):
+        return False, "active_or_unknown"
+    fingerprint = _workflow_fingerprint(payload)
+    if not fingerprint:
+        return False, "missing_fingerprint"
+    if fingerprint == original_fingerprint:
+        return False, "unchanged"
+    plan = plan_safe_ecom_repair(payload)
+    if not (plan.get("ok") and not plan.get("operations") and not plan.get("remaining_issues")):
+        return False, "repair_not_verified"
+    return True, fingerprint
+
+
 async def _reconcile_ambiguous_update(logger, original_fingerprint: str, reason: str) -> dict[str, Any]:
-    """Read back after an ambiguous write without issuing any additional mutation."""
+    """Read back twice after an ambiguous write without issuing another mutation."""
     try:
-        verify = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+        first = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
     except Exception:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_read_exception", reason)
         return {"ok": False, "applied": True, "verified": False, "reason": reason}
 
-    if _tool_call_reported_error(verify):
+    if _tool_call_reported_error(first):
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_read_tool_error", reason)
         return {"ok": False, "applied": True, "verified": False, "reason": reason}
 
-    verify_payload = _payload(verify)
-    if not _explicitly_inactive(verify_payload):
-        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_active_or_unknown", reason)
+    first_payload = _payload(first)
+    first_ok, first_state = _repair_state_verified(first_payload, original_fingerprint)
+    if not first_ok:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_%s", reason, first_state)
         return {"ok": False, "applied": True, "verified": False, "reason": reason}
 
-    verify_fingerprint = _workflow_fingerprint(verify_payload)
-    if not verify_fingerprint or verify_fingerprint == original_fingerprint:
+    try:
+        second = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    except Exception:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_second_read_exception", reason)
         return {"ok": False, "applied": True, "verified": False, "reason": reason}
 
-    verify_plan = plan_safe_ecom_repair(verify_payload)
-    verified = bool(verify_plan.get("ok") and not verify_plan.get("operations") and not verify_plan.get("remaining_issues"))
-    if not verified:
+    if _tool_call_reported_error(second):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_second_read_tool_error", reason)
         return {"ok": False, "applied": True, "verified": False, "reason": reason}
 
-    logger.info("ECOMSX222_REPAIR_RESULT ok=true applied=true verified=true reconciled=true")
+    second_payload = _payload(second)
+    second_ok, second_state = _repair_state_verified(second_payload, original_fingerprint)
+    if not second_ok:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_second_%s", reason, second_state)
+        return {"ok": False, "applied": True, "verified": False, "reason": reason}
+    if second_state != first_state:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_changed", reason)
+        return {"ok": False, "applied": True, "verified": False, "reason": reason}
+
+    logger.info("ECOMSX222_REPAIR_RESULT ok=true applied=true verified=true reconciled=true stable=true")
     return {"ok": True, "applied": True, "verified": True, "reconciled": True}
 
 
