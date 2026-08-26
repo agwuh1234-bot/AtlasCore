@@ -1,7 +1,7 @@
 """Fail-closed execution gate for the ecomSX222 n8n workflow.
 
 The gate re-fetches the live workflow immediately before execution and refuses to
-run unless the topology is still safe, the workflow is inactive, and a dedicated
+run unless the topology is still safe, the workflow is explicitly inactive, and a dedicated
 feature flag is enabled. The underlying n8n bridge/policy still performs its own
 live discovery and write-policy checks before any execution tool call.
 """
@@ -111,13 +111,16 @@ def execution_readiness(details_payload: Any) -> dict[str, Any]:
     safety = _workflow_safety_summary(details_payload)
     issues = list(safety.get("issues") or [])
 
-    if body.get("active") is True:
+    active = body.get("active")
+    if active is True:
         issues.append("workflow_active")
+    elif active is not False:
+        issues.append("workflow_active_state_unknown")
 
     return {
         "ready": not issues,
         "workflow_id": TARGET_WORKFLOW_ID,
-        "active": body.get("active"),
+        "active": active,
         "issues": issues,
     }
 
