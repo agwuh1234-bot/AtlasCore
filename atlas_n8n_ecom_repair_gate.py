@@ -33,7 +33,12 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
     if not allowed:
         return {"ok": False, "applied": False, "reason": reason}
 
-    first = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    try:
+        first = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    except Exception:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false reason=preflight_first_read_exception")
+        return {"ok": False, "applied": False, "reason": "preflight_first_read_exception"}
+
     first_payload = _payload(first)
     plan = plan_safe_ecom_repair(first_payload)
     fingerprint = _workflow_fingerprint(first_payload)
@@ -45,7 +50,12 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
             "remaining_issues": list(plan.get("remaining_issues") or []),
         }
 
-    second = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    try:
+        second = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    except Exception:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false reason=preflight_second_read_exception")
+        return {"ok": False, "applied": False, "reason": "preflight_second_read_exception"}
+
     second_payload = _payload(second)
     if _workflow_fingerprint(second_payload) != fingerprint:
         return {"ok": False, "applied": False, "reason": "workflow_changed_during_preflight"}
