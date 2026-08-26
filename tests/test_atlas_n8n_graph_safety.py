@@ -45,6 +45,24 @@ class N8NGraphSafetyTests(unittest.TestCase):
             ["unsupported_connection_output_type:A:ai_tool", "unsupported_connection_edge_type:A:ai_tool"],
         )
 
+    def test_shape_validator_blocks_unexpected_edge_metadata(self):
+        body = {
+            "connections": {
+                "A": {
+                    "main": [[{
+                        "node": "B",
+                        "type": "main",
+                        "index": 0,
+                        "sourceOutput": "legacy",
+                    }]]
+                }
+            }
+        }
+        self.assertEqual(
+            connection_shape_issues(body),
+            ["unsupported_connection_edge_metadata:A:sourceOutput"],
+        )
+
     def test_shape_validator_fails_closed_on_missing_connections_map(self):
         self.assertEqual(connection_shape_issues({}), ["malformed_connections"])
 
