@@ -130,8 +130,9 @@ def _validate_arguments_against_schema(arguments: dict, schema) -> None:
     """Fail closed on clear top-level schema mismatches before invoking n8n.
 
     MCP schemas can use full JSON Schema. Atlas intentionally performs only
-    conservative top-level checks here (required fields, primitive type and enum)
-    rather than pretending to implement the entire specification.
+    conservative top-level checks here (required fields, primitive type, enum,
+    and explicitly forbidden additional properties) rather than pretending to
+    implement the entire specification.
     """
     if not isinstance(schema, dict):
         return
@@ -148,6 +149,14 @@ def _validate_arguments_against_schema(arguments: dict, schema) -> None:
     properties = schema.get("properties")
     if not isinstance(properties, dict):
         return
+
+    if schema.get("additionalProperties") is False:
+        undeclared = sorted(key for key in arguments if key not in properties)
+        if undeclared:
+            raise N8NBridgeError(
+                "n8n tool arguments failed schema validation: undeclared field(s): "
+                + ", ".join(undeclared)
+            )
 
     for key, value in arguments.items():
         prop = properties.get(key)
