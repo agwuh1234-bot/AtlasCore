@@ -96,6 +96,31 @@ class AtlasN8NEcomTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ecom._has_connection(body, "Start", "HTTP Request"))
         self.assertFalse(ecom._has_connection(body, "Missing", "Shopify Build Brief"))
 
+    def test_add_connection_if_missing_repairs_topology(self):
+        operations = []
+        body = {"connections": {}}
+
+        ecom._add_connection_if_missing(operations, body, "Start", "Shopify Build Brief")
+
+        self.assertEqual(
+            operations,
+            [{"type": "addConnection", "source": "Start", "target": "Shopify Build Brief"}],
+        )
+
+    def test_add_connection_if_missing_is_idempotent(self):
+        operations = []
+        body = {
+            "connections": {
+                "Start": {
+                    "main": [[{"node": "Shopify Build Brief", "type": "main", "index": 0}]]
+                }
+            }
+        }
+
+        ecom._add_connection_if_missing(operations, body, "Start", "Shopify Build Brief")
+
+        self.assertEqual(operations, [])
+
     async def test_upgrade_is_fail_closed_when_feature_flag_is_off(self):
         logger = AsyncMock()
         with patch.dict(os.environ, {"N8N_UPGRADE_ECOMSX222_SHOPIFY": ""}, clear=False), \
