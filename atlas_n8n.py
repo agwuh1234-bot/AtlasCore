@@ -94,8 +94,10 @@ async def call_tool(name: str, arguments: dict | None = None):
     tool_name = (name or "").strip()
     if not tool_name:
         raise N8NBridgeError("n8n tool name is required")
+    if arguments is not None and not isinstance(arguments, dict):
+        raise N8NBridgeError("n8n tool arguments must be an object")
 
-    call_arguments = arguments or {}
+    call_arguments = {} if arguments is None else arguments
     async with n8n_session() as session:
         discovered = await session.list_tools()
         available_names = {tool.name for tool in discovered.tools}
