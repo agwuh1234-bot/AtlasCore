@@ -21,9 +21,22 @@ class N8NCallRequest(BaseModel):
     arguments: dict = Field(default_factory=dict)
 
 
-def _authorize(provided: str | None, expected: str) -> None:
-    if not provided or not secrets.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def _authorized(provided: str | None, expected: str | None) -> bool:
+    return bool(provided and expected and secrets.compare_digest(provided, expected))
+
+
+def _authorize(
+    atlas_key: str | None,
+    chatgpt_key: str | None,
+    *,
+    bridge_key: str,
+    chatgpt_bridge_key: str | None,
+) -> None:
+    if _authorized(atlas_key, bridge_key):
+        return
+    if _authorized(chatgpt_key, chatgpt_bridge_key):
+        return
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def _result_payload(result) -> dict:
@@ -48,14 +61,23 @@ def _result_payload(result) -> dict:
     return payload
 
 
-def build_n8n_executor_router(*, bridge_key: str) -> APIRouter:
+def build_n8n_executor_router(*, bridge_key: str, chatgpt_bridge_key: str | None = None) -> APIRouter:
     router = APIRouter(prefix="/executor/n8n", tags=["executor", "n8n"])
+
+    def authorize_headers(atlas_key: str | None, chatgpt_key: str | None) -> None:
+        _authorize(
+            atlas_key,
+            chatgpt_key,
+            bridge_key=bridge_key,
+            chatgpt_bridge_key=chatgpt_bridge_key,
+        )
 
     @router.get("/tools")
     async def tools(
         x_atlas_bridge_key: str | None = Header(default=None, alias="X-Atlas-Bridge-Key"),
+        x_chatgpt_bridge_key: str | None = Header(default=None, alias="X-ChatGPT-Bridge-Key"),
     ):
-        _authorize(x_atlas_bridge_key, bridge_key)
+        authorize_headers(x_atlas_bridge_key, x_chatgpt_bridge_key)
         if not configured():
             raise HTTPException(status_code=503, detail="n8n_not_configured")
         try:
@@ -68,8 +90,9 @@ def build_n8n_executor_router(*, bridge_key: str) -> APIRouter:
     async def tool_preflight(
         body: N8NPreflightRequest,
         x_atlas_bridge_key: str | None = Header(default=None, alias="X-Atlas-Bridge-Key"),
+        x_chatgpt_bridge_key: str | None = Header(default=None, alias="X-ChatGPT-Bridge-Key"),
     ):
-        _authorize(x_atlas_bridge_key, bridge_key)
+        authorize_headers(x_atlas_bridge_key, x_chatgpt_bridge_key)
         if not configured():
             raise HTTPException(status_code=503, detail="n8n_not_configured")
         discovered = await list_tools()
@@ -79,8 +102,9 @@ def build_n8n_executor_router(*, bridge_key: str) -> APIRouter:
     async def tool_call(
         body: N8NCallRequest,
         x_atlas_bridge_key: str | None = Header(default=None, alias="X-Atlas-Bridge-Key"),
+        x_chatgpt_bridge_key: str | None = Header(default=None, alias="X-ChatGPT-Bridge-Key"),
     ):
-        _authorize(x_atlas_bridge_key, bridge_key)
+        authorize_headers(x_atlas_bridge_key, x_chatgpt_bridge_key)
         if not configured():
             raise HTTPException(status_code=503, detail="n8n_not_configured")
 
