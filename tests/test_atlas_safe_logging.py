@@ -55,6 +55,22 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("Bearer <redacted>", safe["error"])
         self.assertIn("Basic <redacted>", safe["note"])
 
+    def test_plaintext_credential_assignments_are_redacted(self):
+        safe = sanitize_for_log({
+            "error": "request failed token=tok-123 api_key: key-456 password='pw-789' mode=test",
+            "note": 'refresh-token="refresh-abc" cookie=session-xyz status=failed',
+        })
+        rendered = str(safe)
+        for leaked in ("tok-123", "key-456", "pw-789", "refresh-abc", "session-xyz"):
+            self.assertNotIn(leaked, rendered)
+        self.assertIn("token=<redacted>", safe["error"])
+        self.assertIn("api_key: <redacted>", safe["error"])
+        self.assertIn("password=<redacted>", safe["error"])
+        self.assertIn("refresh-token=<redacted>", safe["note"])
+        self.assertIn("cookie=<redacted>", safe["note"])
+        self.assertIn("mode=test", safe["error"])
+        self.assertIn("status=failed", safe["note"])
+
     def test_sensitive_url_query_parameters_are_redacted(self):
         safe = sanitize_for_log({
             "url": "https://example.test/hook?token=secret-token&next=/ok&api_key=key-123",
