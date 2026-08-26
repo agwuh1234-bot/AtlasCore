@@ -48,7 +48,18 @@ _JWT_LIKE_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:eyJ[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})(?![A-Za-z0-9_-])"
 )
 _KNOWN_PROVIDER_SECRET_RE = re.compile(
-    r"(?<![A-Za-z0-9_-])(?:sk-ant-[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|shpat_[A-Za-z0-9_-]{16,}|shpca_[A-Za-z0-9_-]{16,}|shppa_[A-Za-z0-9_-]{16,}|shpss_[A-Za-z0-9_-]{16,})(?![A-Za-z0-9_-])"
+    r"(?<![A-Za-z0-9_-])(?:"
+    r"sk-ant-[A-Za-z0-9_-]{12,}|"
+    r"sk-[A-Za-z0-9_-]{16,}|"
+    r"ghp_[A-Za-z0-9]{20,}|"
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"shpat_[A-Za-z0-9_-]{16,}|"
+    r"shpca_[A-Za-z0-9_-]{16,}|"
+    r"shppa_[A-Za-z0-9_-]{16,}|"
+    r"shpss_[A-Za-z0-9_-]{16,}|"
+    r"xox[baprs]-[A-Za-z0-9-]{16,}|"
+    r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}"
+    r")(?![A-Za-z0-9_-])"
 )
 
 
