@@ -21,6 +21,24 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {"N8N_MCP_TIMEOUT_SECONDS": "bad"}, clear=False):
             self.assertEqual(atlas_n8n._timeout_seconds(), 20.0)
 
+    def test_schema_validation_requires_declared_fields(self):
+        schema = {"type": "object", "required": ["workflowId"], "properties": {"workflowId": {"type": "string"}}}
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "missing required field"):
+            atlas_n8n._validate_arguments_against_schema({}, schema)
+
+    def test_schema_validation_rejects_wrong_top_level_type_and_enum(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "workflowId": {"type": "string"},
+                "mode": {"type": "string", "enum": ["safe", "dry-run"]},
+            },
+        }
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "workflowId must be string"):
+            atlas_n8n._validate_arguments_against_schema({"workflowId": 123}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "not an allowed value"):
+            atlas_n8n._validate_arguments_against_schema({"mode": "danger"}, schema)
+
     async def test_await_mcp_fails_closed_on_timeout(self):
         async def slow():
             await asyncio.sleep(0.05)
@@ -65,6 +83,25 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(atlas_n8n, "n8n_session", return_value=FakeContext()):
             with self.assertRaises(atlas_n8n.N8NBridgeError):
                 await atlas_n8n.call_tool("missing_tool")
+        session.call_tool.assert_not_awaited()
+
+    async def test_call_tool_blocks_schema_mismatch_before_execution(self):
+        tool = type("Tool", (), {
+            "name": "workflow_test",
+            "inputSchema": {"type": "object", "required": ["workflowId"], "properties": {"workflowId": {"type": "string"}}},
+        })()
+        session = AsyncMock()
+        session.list_tools.return_value = type("Result", (), {"tools": [tool]})()
+
+        class FakeContext:
+            async def __aenter__(self):
+                return session
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch.dict(os.environ, {"N8N_WRITES_ENABLED": "true"}, clear=False), patch.object(atlas_n8n, "n8n_session", return_value=FakeContext()):
+            with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "missing required field"):
+                await atlas_n8n.call_tool("workflow_test", {})
         session.call_tool.assert_not_awaited()
 
     async def test_write_call_is_blocked_without_write_opt_in(self):
