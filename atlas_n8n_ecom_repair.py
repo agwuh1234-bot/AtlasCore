@@ -129,12 +129,20 @@ def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
     if not isinstance(nodes, list) or not isinstance(connections, dict):
         return ["malformed_workflow_graph"]
 
-    known_names = {
+    node_names = [
         str(node.get("name"))
         for node in nodes
         if isinstance(node, dict) and isinstance(node.get("name"), str) and node.get("name")
-    }
+    ]
+    known_names = set(node_names)
     issues: list[str] = []
+
+    name_counts: dict[str, int] = {}
+    for name in node_names:
+        name_counts[name] = name_counts.get(name, 0) + 1
+    for name, count in name_counts.items():
+        if count > 1:
+            issues.append(f"duplicate_workflow_node_name:{name}")
 
     for source, outputs in connections.items():
         if not isinstance(source, str):
