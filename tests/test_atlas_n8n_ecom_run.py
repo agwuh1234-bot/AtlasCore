@@ -51,6 +51,13 @@ class EcomRunGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first, same)
         self.assertNotEqual(first, run_gate._workflow_fingerprint(changed))
 
+    def test_execution_receipt_requires_confirmation_signal(self):
+        self.assertFalse(run_gate._execution_receipt(None)["confirmed"])
+        self.assertFalse(run_gate._execution_receipt({})["confirmed"])
+        self.assertTrue(run_gate._execution_receipt({"executionId": "123"})["confirmed"])
+        self.assertTrue(run_gate._execution_receipt({"status": "queued"})["confirmed"])
+        self.assertFalse(run_gate._execution_receipt({"status": "error"})["confirmed"])
+
     async def test_run_flag_off_never_touches_n8n(self):
         logger = MagicMock()
         with patch.dict(os.environ, {run_gate.RUN_FLAG: ""}, clear=False), \
@@ -119,6 +126,21 @@ class EcomRunGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_tool.await_args_list[0].args[0], "get_workflow_details")
         self.assertEqual(call_tool.await_args_list[1].args[0], "get_workflow_details")
         self.assertEqual(call_tool.await_args_list[2].args[0], run_gate.EXECUTE_TOOL)
+
+    async def test_ambiguous_execution_result_is_not_reported_as_success(self):
+        logger = MagicMock()
+        call_tool = AsyncMock(side_effect=[result(SAFE_WORKFLOW), result(deepcopy(SAFE_WORKFLOW)), result({})])
+
+        with patch.dict(os.environ, {run_gate.RUN_FLAG: "1"}, clear=False), \
+             patch.object(run_gate, "configured", return_value=True), \
+             patch.object(run_gate, "decision", return_value=(True, "ok")), \
+             patch.object(run_gate, "call_tool", new=call_tool):
+            result_value = await run_gate.maybe_run_ecomsx222_safe(logger)
+
+        self.assertFalse(result_value["ok"])
+        self.assertTrue(result_value["executed"])
+        self.assertEqual(result_value["reason"], "execution_result_unconfirmed")
+        self.assertEqual(call_tool.await_count, 3)
 
 
 if __name__ == "__main__":
