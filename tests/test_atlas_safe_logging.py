@@ -102,6 +102,21 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertEqual(safe["error"].count("<redacted-secret>"), 2)
         self.assertEqual(safe["note"].count("<redacted-secret>"), 2)
 
+    def test_slack_and_stripe_secrets_are_redacted_without_labels(self):
+        slack_bot = "xox" + "b-" + "123456789012-abcdefghijklmnopqrstuvwxyz"
+        slack_app = "xox" + "a-" + "123456789012-abcdefghijklmnopqrstuvwxyz"
+        stripe_secret = "sk_" + "live_" + "1234567890abcdefghijklmnop"
+        stripe_restricted = "rk_" + "test_" + "1234567890abcdefghijklmnop"
+        safe = sanitize_for_log({
+            "error": f"slack failure {slack_bot} {slack_app}",
+            "note": f"stripe failure {stripe_secret} {stripe_restricted}",
+        })
+        rendered = str(safe)
+        for leaked in (slack_bot, slack_app, stripe_secret, stripe_restricted):
+            self.assertNotIn(leaked, rendered)
+        self.assertEqual(safe["error"].count("<redacted-secret>"), 2)
+        self.assertEqual(safe["note"].count("<redacted-secret>"), 2)
+
     def test_sensitive_url_query_parameters_are_redacted(self):
         safe = sanitize_for_log({
             "url": "https://example.test/hook?token=secret-token&next=/ok&api_key=key-123",
