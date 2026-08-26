@@ -52,6 +52,10 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false reason=preflight_first_read_exception")
         return {"ok": False, "applied": False, "reason": "preflight_first_read_exception"}
 
+    if _tool_call_reported_error(first):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false reason=preflight_first_read_tool_error")
+        return {"ok": False, "applied": False, "reason": "preflight_first_read_tool_error"}
+
     first_payload = _payload(first)
     if not _explicitly_inactive(first_payload):
         return {"ok": False, "applied": False, "reason": "workflow_not_explicitly_inactive"}
@@ -71,6 +75,10 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
     except Exception:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false reason=preflight_second_read_exception")
         return {"ok": False, "applied": False, "reason": "preflight_second_read_exception"}
+
+    if _tool_call_reported_error(second):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false reason=preflight_second_read_tool_error")
+        return {"ok": False, "applied": False, "reason": "preflight_second_read_tool_error"}
 
     second_payload = _payload(second)
     if not _explicitly_inactive(second_payload):
@@ -111,6 +119,15 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
             "applied": True,
             "verified": False,
             "reason": "post_repair_verification_exception",
+        }
+
+    if _tool_call_reported_error(verify):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=verification_read_tool_error")
+        return {
+            "ok": False,
+            "applied": True,
+            "verified": False,
+            "reason": "post_repair_verification_tool_error",
         }
 
     verify_payload = _payload(verify)
