@@ -66,15 +66,53 @@ class FailedExecutionReceiptTests(unittest.TestCase):
         self.assertTrue(receipt["workflow_id_present"])
         self.assertFalse(receipt["workflow_id_matches"])
 
+    def test_conflicting_execution_id_aliases_fail_closed(self):
+        receipt = run_gate._execution_receipt(
+            {"executionId": "123", "execution_id": "999", "status": "success"}
+        )
+        self.assertFalse(receipt["confirmed"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertTrue(receipt["execution_id_conflict"])
+
+    def test_matching_execution_id_aliases_are_accepted(self):
+        receipt = run_gate._execution_receipt(
+            {"executionId": "123", "execution_id": 123, "status": "success"}
+        )
+        self.assertTrue(receipt["confirmed"])
+        self.assertFalse(receipt["execution_id_conflict"])
+
+    def test_conflicting_workflow_id_aliases_fail_closed(self):
+        receipt = run_gate._execution_receipt(
+            {
+                "executionId": "123",
+                "status": "success",
+                "workflowId": run_gate.TARGET_WORKFLOW_ID,
+                "workflow_id": "other-workflow",
+            }
+        )
+        self.assertFalse(receipt["confirmed"])
+        self.assertTrue(receipt["workflow_id_present"])
+        self.assertTrue(receipt["workflow_id_conflict"])
+        self.assertFalse(receipt["workflow_id_matches"])
+
+    def test_malformed_secondary_execution_alias_fails_closed(self):
+        receipt = run_gate._execution_receipt(
+            {"executionId": "123", "id": {"value": "123"}, "status": "success"}
+        )
+        self.assertFalse(receipt["confirmed"])
+        self.assertTrue(receipt["execution_id_conflict"])
+
     def test_container_execution_id_is_rejected(self):
         receipt = run_gate._execution_receipt({"executionId": {"id": "123"}})
         self.assertFalse(receipt["confirmed"])
-        self.assertFalse(receipt["execution_id_present"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertTrue(receipt["execution_id_conflict"])
 
     def test_boolean_execution_id_is_rejected(self):
         receipt = run_gate._execution_receipt({"executionId": True})
         self.assertFalse(receipt["confirmed"])
-        self.assertFalse(receipt["execution_id_present"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertTrue(receipt["execution_id_conflict"])
 
     def test_container_workflow_id_fails_closed_even_on_success(self):
         receipt = run_gate._execution_receipt(
@@ -83,11 +121,13 @@ class FailedExecutionReceiptTests(unittest.TestCase):
         self.assertFalse(receipt["confirmed"])
         self.assertTrue(receipt["workflow_id_present"])
         self.assertFalse(receipt["workflow_id_matches"])
+        self.assertTrue(receipt["workflow_id_conflict"])
 
     def test_oversized_execution_id_is_rejected(self):
         receipt = run_gate._execution_receipt({"executionId": "x" * 257})
         self.assertFalse(receipt["confirmed"])
-        self.assertFalse(receipt["execution_id_present"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertTrue(receipt["execution_id_conflict"])
 
 
 if __name__ == "__main__":
