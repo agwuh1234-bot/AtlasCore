@@ -174,15 +174,26 @@ def _workflow_safety_summary(value: Any) -> dict[str, Any]:
     issues: list[str] = []
 
     trigger = "When clicking ‘Execute workflow’"
-    required_nodes = [
-        trigger,
-        SHOPIFY_BRIEF_NODE,
-        "Message a model1",
-        "Message a model",
-    ]
-    for name in required_nodes:
-        if name not in by_name:
+    required_node_types = {
+        trigger: "n8n-nodes-base.manualTrigger",
+        SHOPIFY_BRIEF_NODE: "n8n-nodes-base.set",
+        "Message a model1": "@n8n/n8n-nodes-langchain.anthropic",
+        "Message a model": "@n8n/n8n-nodes-langchain.anthropic",
+    }
+    name_counts: dict[str, int] = {}
+    for node in nodes:
+        name = str(node.get("name") or "")
+        name_counts[name] = name_counts.get(name, 0) + 1
+    for name, expected_type in required_node_types.items():
+        node = by_name.get(name)
+        if node is None:
             issues.append(f"missing_node:{name}")
+            continue
+        if name_counts.get(name, 0) != 1:
+            issues.append(f"duplicate_node_name:{name}")
+        actual_type = str(node.get("type") or "")
+        if actual_type != expected_type:
+            issues.append(f"unexpected_node_type:{name}:{actual_type}")
 
     required_edges = [
         (trigger, SHOPIFY_BRIEF_NODE),
