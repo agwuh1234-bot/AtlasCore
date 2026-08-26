@@ -68,6 +68,12 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
                         issues.append(f"malformed_connection_edge:{source}:{branch_index}:{edge_index}")
                         continue
 
+                    unexpected_keys = sorted(str(key) for key in edge.keys() if key not in {"node", "type", "index"})
+                    if unexpected_keys:
+                        issues.append(
+                            f"unsupported_connection_edge_metadata:{source}:{','.join(unexpected_keys)}"
+                        )
+
                     target = edge.get("node")
                     if not isinstance(target, str) or not target:
                         issues.append(f"malformed_connection_target:{source}")
