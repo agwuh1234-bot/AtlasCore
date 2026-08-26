@@ -25,6 +25,68 @@ def connection_count(body: dict[str, Any], source: str, target: str) -> int:
     return count
 
 
+def connection_shape_issues(body: dict[str, Any]) -> list[str]:
+    """Return stable fail-closed issue keys for unsupported/malformed n8n edges.
+
+    Atlas write operations currently model only the canonical n8n connection form:
+    a string source, ``main`` output type, output branch 0, string target,
+    ``main`` edge type and target input index 0. Anything else is deliberately
+    surfaced instead of being silently normalized or guessed at.
+    """
+    connections = body.get("connections")
+    if not isinstance(connections, dict):
+        return ["malformed_connections"]
+
+    issues: list[str] = []
+    for source, outputs in connections.items():
+        if not isinstance(source, str) or not source:
+            issues.append("malformed_connection_source")
+            continue
+        if not isinstance(outputs, dict):
+            issues.append(f"malformed_connection_map:{source}")
+            continue
+
+        for output_type, branches in outputs.items():
+            if not isinstance(output_type, str) or not output_type:
+                issues.append(f"malformed_connection_output_type:{source}")
+            elif output_type != "main":
+                issues.append(f"unsupported_connection_output_type:{source}:{output_type}")
+
+            if not isinstance(branches, list):
+                issues.append(f"malformed_connection_branches:{source}")
+                continue
+
+            for branch_index, branch in enumerate(branches):
+                if not isinstance(branch, list):
+                    issues.append(f"malformed_connection_branch:{source}:{branch_index}")
+                    continue
+                if branch_index != 0 and branch:
+                    issues.append(f"unsupported_connection_branch_index:{source}:{branch_index}")
+
+                for edge_index, edge in enumerate(branch):
+                    if not isinstance(edge, dict):
+                        issues.append(f"malformed_connection_edge:{source}:{branch_index}:{edge_index}")
+                        continue
+
+                    target = edge.get("node")
+                    if not isinstance(target, str) or not target:
+                        issues.append(f"malformed_connection_target:{source}")
+
+                    edge_type = edge.get("type")
+                    if not isinstance(edge_type, str) or not edge_type:
+                        issues.append(f"malformed_connection_edge_type:{source}")
+                    elif edge_type != "main":
+                        issues.append(f"unsupported_connection_edge_type:{source}:{edge_type}")
+
+                    target_index = edge.get("index")
+                    if isinstance(target_index, bool) or not isinstance(target_index, int) or target_index < 0:
+                        issues.append(f"malformed_connection_edge_index:{source}")
+                    elif target_index != 0:
+                        issues.append(f"unsupported_connection_edge_index:{source}:{target_index}")
+
+    return list(dict.fromkeys(issues))
+
+
 def duplicate_connections(body: dict[str, Any], watched_edges: tuple[tuple[str, str], ...]) -> list[str]:
     """Return stable issue keys for watched edges that occur more than once."""
     issues: list[str] = []
