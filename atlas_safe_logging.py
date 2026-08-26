@@ -29,6 +29,9 @@ _SENSITIVE_CANONICAL_KEYS = {
 }
 _SENSITIVE_SUFFIXES = ("token", "secret", "password", "cookie", "credentials")
 _AUTH_VALUE_RE = re.compile(r"(?i)\b(bearer|basic)\s+[^\s,;]+")
+_QUERY_CREDENTIAL_RE = re.compile(
+    r"(?i)([?&](?:access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|token|secret|password|cookie)=)([^&#\s]+)"
+)
 
 
 def _canonical_key(key: Any) -> str:
@@ -48,6 +51,7 @@ def _is_sensitive_key(key: Any) -> bool:
 def _sanitize_string(value: str) -> str:
     """Redact common auth credentials even when embedded in a free-form string."""
     redacted = _AUTH_VALUE_RE.sub(lambda match: f"{match.group(1)} <redacted>", value)
+    redacted = _QUERY_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     if len(redacted) > 500:
         return redacted[:500] + "…<truncated>"
     return redacted
