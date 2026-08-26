@@ -6,6 +6,7 @@ All MCP calls pass through the central Atlas n8n safety policy before execution.
 
 import asyncio
 import copy
+import math
 import os
 from contextlib import asynccontextmanager
 
@@ -70,7 +71,6 @@ async def list_tools():
 
 
 def _declared_intent(tool_name: str) -> str:
-    """Infer the narrowest intent accepted by policy for a discovered tool."""
     allowed, reason = decision(tool_name, "read")
     if allowed:
         return "read"
@@ -80,7 +80,6 @@ def _declared_intent(tool_name: str) -> str:
 
 
 def _is_partial_workflow_tool(tool_name: str) -> bool:
-    """Recognize supported workflow-patch tools without trusting one vendor prefix."""
     normalized = (tool_name or "").strip().lower()
     return normalized == "update_workflow" or normalized.endswith("update_partial_workflow")
 
@@ -185,6 +184,10 @@ def _validate_size_constraints(key: str, value, prop: dict) -> None:
 def _validate_numeric_constraints(key: str, value, prop: dict) -> None:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return
+    if isinstance(value, float) and not math.isfinite(value):
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {key} must be a finite number"
+        )
 
     minimum = prop.get("minimum")
     maximum = prop.get("maximum")
@@ -261,9 +264,6 @@ async def call_tool(name: str, arguments: dict | None = None):
         raise N8NBridgeError("n8n tool arguments must be an object")
 
     try:
-        # Freeze the caller-provided structure before the first await. This prevents a
-        # shared mutable dict/list from changing after policy/schema checks but before
-        # the MCP client serializes the actual tool call.
         call_arguments = {} if arguments is None else copy.deepcopy(arguments)
     except Exception as exc:
         raise N8NBridgeError("n8n tool arguments could not be safely snapshotted") from exc
