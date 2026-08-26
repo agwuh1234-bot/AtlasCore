@@ -207,6 +207,8 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
 
 
 async def maybe_inspect_ecomsx222(logger) -> None:
+    await maybe_upgrade_ecomsx222_shopify(logger)
+
     if not _enabled("N8N_INSPECT_ECOMSX222"):
         return
     if not configured():
