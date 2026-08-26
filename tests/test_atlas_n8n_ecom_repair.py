@@ -57,6 +57,19 @@ class EcomRepairPlannerTests(unittest.TestCase):
         self.assertFalse(plan["ok"])
         self.assertIn("unexpected_reachable_node:Mystery", plan["remaining_issues"])
 
+    def test_legacy_removal_does_not_hide_other_reachable_unknown_node(self):
+        value = workflow({
+            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}, {"node": "Mystery"}]]},
+            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
+            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "Message a model": {"main": [[{"node": "Edit a file"}]]},
+        })
+        value["nodes"].append({"name": "Mystery", "type": "n8n-nodes-base.code", "disabled": False})
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertIn("unexpected_reachable_node:Mystery", plan["remaining_issues"])
+        self.assertNotIn("unexpected_reachable_node:Edit a file", plan["remaining_issues"])
+
     def test_malformed_body_fails_closed(self):
         plan = plan_safe_ecom_repair({"nodes": []})
         self.assertFalse(plan["ok"])
