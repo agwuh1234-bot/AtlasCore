@@ -81,7 +81,7 @@ class EcomRepairGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["applied"])
         self.assertFalse(result["verified"])
         self.assertEqual(result["reason"], "repair_update_exception")
-        self.assertEqual(call.await_count, 3)
+        self.assertEqual(call.await_count, 4)
 
     async def test_update_tool_error_result_is_ambiguous_applied(self):
         workflow = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
@@ -94,7 +94,7 @@ class EcomRepairGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["applied"])
         self.assertFalse(result["verified"])
         self.assertEqual(result["reason"], "repair_update_tool_error")
-        self.assertEqual(call.await_count, 3)
+        self.assertEqual(call.await_count, 4)
 
     async def test_verification_read_exception_is_fail_closed(self):
         workflow = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
