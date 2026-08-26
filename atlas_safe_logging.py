@@ -69,6 +69,10 @@ _KNOWN_PROVIDER_SECRET_RE = re.compile(
     r"AIza[A-Za-z0-9_-]{35}"
     r")(?![A-Za-z0-9_-])"
 )
+_PEM_PRIVATE_KEY_RE = re.compile(
+    r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----.*?-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def _canonical_key(key: Any) -> str:
@@ -87,9 +91,10 @@ def _is_sensitive_key(key: Any) -> bool:
 
 def _sanitize_string(value: str) -> str:
     """Redact common auth credentials even when embedded in a free-form string."""
+    redacted = _PEM_PRIVATE_KEY_RE.sub("<redacted-private-key>", value)
     redacted = _AUTH_ASSIGNMENT_RE.sub(
         lambda match: f"{match.group(1)}{match.group(2)} <redacted>",
-        value,
+        redacted,
     )
     redacted = _BEARER_VALUE_RE.sub("Bearer <redacted>", redacted)
     redacted = _BASIC_VALUE_RE.sub("Basic <redacted>", redacted)
