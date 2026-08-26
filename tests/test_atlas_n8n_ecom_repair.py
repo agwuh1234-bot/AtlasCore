@@ -93,6 +93,31 @@ class EcomRepairPlannerTests(unittest.TestCase):
         self.assertIn("unexpected_reachable_node:Mystery", plan["remaining_issues"])
         self.assertNotIn("unexpected_reachable_node:Edit a file", plan["remaining_issues"])
 
+    def test_dangling_disconnected_target_blocks_all_planned_writes(self):
+        value = workflow({
+            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
+            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
+            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "Orphan Source": {"main": [[{"node": "Missing Target"}]]},
+        })
+        value["nodes"].append({"name": "Orphan Source", "type": "n8n-nodes-base.noOp", "disabled": True})
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertIn("dangling_connection_target:Orphan Source->Missing Target", plan["remaining_issues"])
+
+    def test_dangling_source_blocks_all_planned_writes(self):
+        value = workflow({
+            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
+            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
+            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "Missing Source": {"main": [[{"node": "Edit a file"}]]},
+        })
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertIn("dangling_connection_source:Missing Source", plan["remaining_issues"])
+
     def test_missing_required_node_blocks_all_planned_writes(self):
         value = workflow({
             "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
