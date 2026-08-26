@@ -83,7 +83,9 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
     Explicit statuses are fail-closed: only known accepted string states are
     eligible. A bare status string is never enough to confirm execution; it must
     be corroborated by either a valid execution identifier or an explicit matching
-    workflow identifier. Contradictory identifier aliases fail closed.
+    workflow identifier. Contradictory identifier aliases fail closed. Generic
+    ``id`` is deliberately ignored because MCP payloads may use it for unrelated
+    objects; only execution-specific aliases can confirm an execution identifier.
     """
     if not isinstance(payload, dict):
         return {
@@ -97,7 +99,7 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
         }
 
     execution_id, execution_id_present, execution_id_conflict = _receipt_alias_identifier(
-        payload, ("executionId", "execution_id", "id")
+        payload, ("executionId", "execution_id")
     )
 
     status_present = "status" in payload
