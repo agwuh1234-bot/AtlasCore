@@ -71,6 +71,22 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("mode=test", safe["error"])
         self.assertIn("status=failed", safe["note"])
 
+    def test_prefixed_credential_assignments_are_redacted_in_free_form_strings(self):
+        safe = sanitize_for_log({
+            "error": "webhook_token=hook-123 client-secret: sec-456 dbCredentials='db-789' mode=test",
+            "url": "https://example.test/x?session_cookie=cookie-abc&service_token=tok-xyz&mode=test",
+        })
+        rendered = str(safe)
+        for leaked in ("hook-123", "sec-456", "db-789", "cookie-abc", "tok-xyz"):
+            self.assertNotIn(leaked, rendered)
+        self.assertIn("webhook_token=<redacted>", safe["error"])
+        self.assertIn("client-secret: <redacted>", safe["error"])
+        self.assertIn("dbCredentials=<redacted>", safe["error"])
+        self.assertIn("session_cookie=<redacted>", safe["url"])
+        self.assertIn("service_token=<redacted>", safe["url"])
+        self.assertIn("mode=test", safe["error"])
+        self.assertIn("mode=test", safe["url"])
+
     def test_sensitive_url_query_parameters_are_redacted(self):
         safe = sanitize_for_log({
             "url": "https://example.test/hook?token=secret-token&next=/ok&api_key=key-123",
