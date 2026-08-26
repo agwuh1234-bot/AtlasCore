@@ -161,10 +161,12 @@ def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
             if not isinstance(branches, list):
                 issues.append(f"malformed_connection_branches:{source}")
                 continue
-            for branch in branches:
+            for branch_index, branch in enumerate(branches):
                 if not isinstance(branch, list):
                     issues.append(f"malformed_connection_branch:{source}")
                     continue
+                if branch_index != 0 and branch:
+                    issues.append(f"unsupported_connection_branch_index:{source}:{branch_index}")
                 for edge in branch:
                     if not isinstance(edge, dict):
                         issues.append(f"malformed_connection_edge:{source}")
