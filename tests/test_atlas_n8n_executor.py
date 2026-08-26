@@ -100,6 +100,33 @@ class N8NExecutorGatewayTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"]["reason"], "intent_mismatch")
         call_tool.assert_not_awaited()
 
+    def test_result_payload_redacts_nested_sensitive_fields(self):
+        result = SimpleNamespace(
+            isError=False,
+            structuredContent={
+                "token": "top-secret",
+                "nested": {"authorization": "Bearer abc", "safe": "ok"},
+                "items": [{"apiKey": "hidden", "name": "kept"}],
+            },
+            content=[SimpleNamespace(text='{"password":"pw","value":7}')],
+        )
+        payload = atlas_n8n_executor._result_payload(result)
+        structured = payload["structured_content"]
+        self.assertEqual(structured["token"], "[REDACTED]")
+        self.assertEqual(structured["nested"]["authorization"], "[REDACTED]")
+        self.assertEqual(structured["nested"]["safe"], "ok")
+        self.assertEqual(structured["items"][0]["apiKey"], "[REDACTED]")
+        self.assertEqual(payload["content"][0]["value"]["password"], "[REDACTED]")
+        self.assertEqual(payload["content"][0]["value"]["value"], 7)
+
+    def test_result_payload_bounds_unstructured_text(self):
+        long_text = "x" * (atlas_n8n_executor._MAX_TEXT_RESULT + 100)
+        result = SimpleNamespace(isError=False, structuredContent=None, content=[SimpleNamespace(text=long_text)])
+        payload = atlas_n8n_executor._result_payload(result)
+        text = payload["content"][0]["text"]
+        self.assertTrue(text.endswith("...[TRUNCATED]"))
+        self.assertLess(len(text), len(long_text))
+
 
 if __name__ == "__main__":
     unittest.main()
