@@ -26,7 +26,10 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertEqual(safe["body"], "<redacted>")
 
     def test_large_and_deep_payloads_are_bounded(self):
-        value = {"items": list(range(100)), "deep": {"a": {"b": {"c": {"d": {"e": {"f": "secret"}}}}}}}}
+        value = {
+            "items": list(range(100)),
+            "deep": {"a": {"b": {"c": {"d": {"e": {"f": "secret"}}}}}},
+        }
         safe = sanitize_for_log(value, max_depth=3, max_items=10)
         self.assertIn("<truncated_items:90>", str(safe))
         self.assertIn("<truncated>", str(safe))
