@@ -35,7 +35,12 @@ def _workflow_fingerprint(details_payload: Any) -> str | None:
 
 
 def _execution_receipt(payload: Any) -> dict[str, Any]:
-    """Extract only non-sensitive confirmation that n8n accepted an execution."""
+    """Extract only non-sensitive confirmation that n8n accepted an execution.
+
+    An execution identifier alone is not sufficient if n8n also reports an
+    explicit failure state. This keeps the gate fail-closed for contradictory
+    receipts such as {executionId: ..., status: "failed"}.
+    """
     if not isinstance(payload, dict):
         return {"confirmed": False, "execution_id_present": False, "status": None}
 
@@ -47,7 +52,11 @@ def _execution_receipt(payload: Any) -> dict[str, Any]:
         status = None
 
     accepted_statuses = {"running", "success", "completed", "queued", "waiting"}
-    confirmed = bool(execution_id) or status in accepted_statuses
+    failed_statuses = {"failed", "error", "cancelled", "canceled", "crashed", "stopped"}
+    if status in failed_statuses:
+        confirmed = False
+    else:
+        confirmed = bool(execution_id) or status in accepted_statuses
     return {
         "confirmed": confirmed,
         "execution_id_present": bool(execution_id),
@@ -167,6 +176,7 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
                         "executed": True,
                         "reason": "execution_result_unconfirmed",
                         "workflow_id": TARGET_WORKFLOW_ID,
+                        "status": receipt["status"],
                     },
                     ensure_ascii=False,
                 ),
@@ -176,6 +186,7 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
                 "executed": True,
                 "reason": "execution_result_unconfirmed",
                 "workflow_id": TARGET_WORKFLOW_ID,
+                "status": receipt["status"],
             }
 
         logger.info(
