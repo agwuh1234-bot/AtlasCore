@@ -1,6 +1,6 @@
 import unittest
 
-from atlas_n8n_graph_safety import connection_count, duplicate_connections
+from atlas_n8n_graph_safety import connection_count, connection_shape_issues, duplicate_connections
 
 
 def body_with_edges(*edges):
@@ -26,6 +26,27 @@ class N8NGraphSafetyTests(unittest.TestCase):
     def test_malformed_connections_fail_safe_to_zero_count(self):
         self.assertEqual(connection_count({"connections": []}, "A", "B"), 0)
         self.assertEqual(connection_count({}, "A", "B"), 0)
+
+    def test_shape_validator_accepts_canonical_main_edge(self):
+        self.assertEqual(connection_shape_issues(body_with_edges(("A", "B"))), [])
+
+    def test_shape_validator_blocks_nonzero_target_input_index(self):
+        body = {"connections": {"A": {"main": [[{"node": "B", "type": "main", "index": 1}]]}}}
+        self.assertEqual(connection_shape_issues(body), ["unsupported_connection_edge_index:A:1"])
+
+    def test_shape_validator_blocks_nonzero_output_branch(self):
+        body = {"connections": {"A": {"main": [[], [{"node": "B", "type": "main", "index": 0}]]}}}
+        self.assertEqual(connection_shape_issues(body), ["unsupported_connection_branch_index:A:1"])
+
+    def test_shape_validator_blocks_unreviewed_connection_types(self):
+        body = {"connections": {"A": {"ai_tool": [[{"node": "B", "type": "ai_tool", "index": 0}]]}}}
+        self.assertEqual(
+            connection_shape_issues(body),
+            ["unsupported_connection_output_type:A:ai_tool", "unsupported_connection_edge_type:A:ai_tool"],
+        )
+
+    def test_shape_validator_fails_closed_on_missing_connections_map(self):
+        self.assertEqual(connection_shape_issues({}), ["malformed_connections"])
 
 
 if __name__ == "__main__":
