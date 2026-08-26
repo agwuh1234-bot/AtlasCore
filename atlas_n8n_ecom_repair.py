@@ -117,12 +117,62 @@ def _duplicate_reviewed_edges(body: dict[str, Any]) -> list[str]:
     return issues
 
 
+def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
+    """Return references to missing nodes anywhere in the workflow graph.
+
+    Repairs are intentionally blocked even when a dangling edge sits outside the
+    manual-trigger path. Writing into a structurally inconsistent workflow makes
+    the outcome harder to reason about and could hide future activation hazards.
+    """
+    nodes = body.get("nodes")
+    connections = body.get("connections")
+    if not isinstance(nodes, list) or not isinstance(connections, dict):
+        return ["malformed_workflow_graph"]
+
+    known_names = {
+        str(node.get("name"))
+        for node in nodes
+        if isinstance(node, dict) and isinstance(node.get("name"), str) and node.get("name")
+    }
+    issues: list[str] = []
+
+    for source, outputs in connections.items():
+        if not isinstance(source, str):
+            issues.append("malformed_connection_source")
+            continue
+        if source not in known_names:
+            issues.append(f"dangling_connection_source:{source}")
+        if not isinstance(outputs, dict):
+            issues.append(f"malformed_connection_map:{source}")
+            continue
+        for branches in outputs.values():
+            if not isinstance(branches, list):
+                issues.append(f"malformed_connection_branches:{source}")
+                continue
+            for branch in branches:
+                if not isinstance(branch, list):
+                    issues.append(f"malformed_connection_branch:{source}")
+                    continue
+                for edge in branch:
+                    if not isinstance(edge, dict):
+                        issues.append(f"malformed_connection_edge:{source}")
+                        continue
+                    target = edge.get("node")
+                    if not isinstance(target, str) or not target:
+                        issues.append(f"malformed_connection_target:{source}")
+                    elif target not in known_names:
+                        issues.append(f"dangling_connection_target:{source}->{target}")
+
+    return list(dict.fromkeys(issues))
+
+
 def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
     """Return a deterministic dry-run repair plan without executing n8n writes.
 
     The planner only proposes narrowly reviewed topology edits. Unknown safety
-    issues remain blockers and are never guessed at. If critical node identity
-    or reviewed edge cardinality is uncertain, no write operations are proposed.
+    issues remain blockers and are never guessed at. If critical node identity,
+    graph integrity, or reviewed edge cardinality is uncertain, no write
+    operations are proposed.
     """
     body = _find_workflow_body(value)
     if not isinstance(body, dict):
@@ -141,6 +191,15 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
             "dry_run": True,
             "operations": [],
             "remaining_issues": safety_issues,
+        }
+
+    graph_issues = _dangling_connection_issues(body)
+    if graph_issues:
+        return {
+            "ok": False,
+            "dry_run": True,
+            "operations": [],
+            "remaining_issues": list(dict.fromkeys([*safety_issues, *graph_issues])),
         }
 
     duplicate_issues = _duplicate_reviewed_edges(body)
