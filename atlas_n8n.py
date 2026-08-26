@@ -78,6 +78,12 @@ def _declared_intent(tool_name: str) -> str:
     return "write"
 
 
+def _is_partial_workflow_tool(tool_name: str) -> bool:
+    """Recognize supported workflow-patch tools without trusting one vendor prefix."""
+    normalized = (tool_name or "").strip().lower()
+    return normalized == "update_workflow" or normalized.endswith("update_partial_workflow")
+
+
 def _contains_destructive_workflow_operation(arguments: dict) -> bool:
     operations = arguments.get("operations")
     if not isinstance(operations, list):
@@ -88,10 +94,18 @@ def _contains_destructive_workflow_operation(arguments: dict) -> bool:
         op_type = str(operation.get("type") or "").strip().lower()
         if op_type.startswith("remove") or op_type.startswith("delete"):
             return True
-        # Current n8n partial updates represent disabling as setNodeDisabled
-        # with a boolean payload. Disabling reachable workflow nodes can break a
-        # production path, so require the same destructive opt-in as removals.
+        # Both the native n8n MCP and common n8n MCP bridges expose partial
+        # workflow-edit operations. Treat any operation that can disable a live
+        # path or replace/rewire topology as destructive, regardless of tool prefix.
         if op_type == "setnodedisabled" and operation.get("disabled") is True:
+            return True
+        if op_type in {
+            "disablenode",
+            "deactivateworkflow",
+            "replaceconnections",
+            "rewireconnection",
+            "cleanstaleconnections",
+        }:
             return True
     return False
 
@@ -102,10 +116,10 @@ def _authorize_call(tool_name: str, arguments: dict) -> None:
     if not allowed:
         raise N8NBridgeError(f"n8n MCP call blocked by policy: {reason}")
 
-    # update_workflow is nominally a write tool, but its structured operation list
-    # can contain destructive actions. Require the separate destructive opt-in in
-    # that case so ordinary write permission cannot silently remove topology.
-    if tool_name == "update_workflow" and _contains_destructive_workflow_operation(arguments):
+    # Partial workflow tools are nominally writes, but their structured operation
+    # lists can contain destructive actions. Require the separate destructive
+    # opt-in so ordinary write permission cannot silently remove or disable topology.
+    if _is_partial_workflow_tool(tool_name) and _contains_destructive_workflow_operation(arguments):
         destructive_enabled = os.environ.get("N8N_DESTRUCTIVE_ENABLED", "").strip().lower() in {
             "1", "true", "yes", "on"
         }
