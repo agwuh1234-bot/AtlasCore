@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import main as atlas
 from atlas_n8n import N8NBridgeError, call_tool as n8n_call, configured as n8n_configured, list_tools as n8n_list
 from atlas_n8n_bootstrap import maybe_add_ping_node, maybe_add_second_test_node, maybe_bootstrap_test_workflow
+from atlas_n8n_ecom import maybe_inspect_ecomsx222
 from atlas_n8n_policy import decision as n8n_policy_decision, preflight as n8n_preflight
 
 N8N_TOOLS = [
@@ -187,6 +188,7 @@ async def _atlas_lifespan_with_n8n(app):
         await maybe_bootstrap_test_workflow(atlas.logger)
         await maybe_add_second_test_node(atlas.logger)
         await maybe_add_ping_node(atlas.logger)
+        await maybe_inspect_ecomsx222(atlas.logger)
         yield
 
 atlas.api.router.lifespan_context = _atlas_lifespan_with_n8n
