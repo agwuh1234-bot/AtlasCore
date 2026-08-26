@@ -65,7 +65,17 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
             "reason": "repair_update_exception",
         }
 
-    verify = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    try:
+        verify = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    except Exception:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=verification_read_exception")
+        return {
+            "ok": False,
+            "applied": True,
+            "verified": False,
+            "reason": "post_repair_verification_exception",
+        }
+
     verify_plan = plan_safe_ecom_repair(_payload(verify))
     verified = bool(verify_plan.get("ok") and not verify_plan.get("operations") and not verify_plan.get("remaining_issues"))
     if not verified:
