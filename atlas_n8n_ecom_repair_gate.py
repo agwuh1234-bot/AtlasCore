@@ -29,6 +29,13 @@ def _explicitly_inactive(value: Any) -> bool:
     return isinstance(body, dict) and body.get("active") is False
 
 
+def _tool_call_reported_error(value: Any) -> bool:
+    """Recognize MCP tool errors whether returned as an object or plain mapping."""
+    if isinstance(value, dict):
+        return value.get("isError") is True or value.get("is_error") is True
+    return getattr(value, "isError", False) is True or getattr(value, "is_error", False) is True
+
+
 async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
     if not _enabled(REPAIR_FLAG):
         return {"ok": False, "applied": False, "reason": "repair_flag_disabled"}
@@ -76,7 +83,7 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
         return {"ok": False, "applied": False, "reason": "repair_plan_changed_during_preflight"}
 
     try:
-        await call_tool(UPDATE_TOOL, {"workflowId": TARGET_WORKFLOW_ID, "operations": plan["operations"]})
+        update_result = await call_tool(UPDATE_TOOL, {"workflowId": TARGET_WORKFLOW_ID, "operations": plan["operations"]})
     except Exception:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=update_exception")
         return {
@@ -84,6 +91,15 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
             "applied": True,
             "verified": False,
             "reason": "repair_update_exception",
+        }
+
+    if _tool_call_reported_error(update_result):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=false verified=false reason=update_tool_reported_error")
+        return {
+            "ok": False,
+            "applied": False,
+            "verified": False,
+            "reason": "repair_update_tool_error",
         }
 
     try:
