@@ -23,6 +23,14 @@ class ShopifySecretLoggingTests(unittest.TestCase):
         self.assertIn("Basic", safe)
         self.assertIn("EUR", safe)
 
+    def test_basic_auth_prose_is_not_redacted(self):
+        safe = sanitize_for_log("Basic auth enabled for the Shopify admin client")
+        self.assertEqual(safe, "Basic auth enabled for the Shopify admin client")
+
+    def test_real_basic_auth_value_is_redacted(self):
+        safe = sanitize_for_log("Basic dXNlcjpwYXNzd29yZA==")
+        self.assertEqual(safe, "Basic <redacted>")
+
 
 if __name__ == "__main__":
     unittest.main()
