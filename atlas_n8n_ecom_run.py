@@ -50,13 +50,13 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
     """Extract only non-sensitive confirmation that n8n accepted an execution.
 
     An execution identifier alone is not sufficient if n8n also reports an
-    explicit failure or unknown state. Explicit statuses are fail-closed: only
-    known accepted states confirm execution. If n8n returns a workflow id, it
-    must match the workflow that Atlas requested; a mismatched receipt is never
-    treated as success. Container/boolean identifier values are rejected so a
-    malformed MCP payload cannot masquerade as a valid receipt. When status and
-    workflow id are absent, a valid scalar execution identifier is accepted as
-    the minimal receipt.
+    explicit failure, unknown state, or malformed status value. Explicit statuses
+    are fail-closed: only known accepted string states confirm execution. If n8n
+    returns a workflow id, it must match the workflow that Atlas requested; a
+    mismatched receipt is never treated as success. Container/boolean identifier
+    values are rejected so a malformed MCP payload cannot masquerade as a valid
+    receipt. Only when the status field is truly absent may a valid scalar
+    execution identifier act as the minimal receipt.
     """
     if not isinstance(payload, dict):
         return {
@@ -70,11 +70,14 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
     execution_id = _receipt_identifier(
         payload.get("executionId") or payload.get("execution_id") or payload.get("id")
     )
-    status = payload.get("status")
-    if isinstance(status, str):
-        status = status.strip().lower() or None
-    else:
-        status = None
+
+    status_present = "status" in payload
+    raw_status = payload.get("status")
+    status = None
+    status_valid = not status_present
+    if isinstance(raw_status, str):
+        status = raw_status.strip().lower() or None
+        status_valid = status is not None
 
     raw_workflow_id = payload.get("workflowId") or payload.get("workflow_id")
     receipt_workflow_id = _receipt_identifier(raw_workflow_id)
@@ -90,9 +93,11 @@ def _execution_receipt(payload: Any, expected_workflow_id: str = TARGET_WORKFLOW
     failed_statuses = {"failed", "error", "cancelled", "canceled", "crashed", "stopped"}
     if workflow_id_matches is False:
         confirmed = False
+    elif status_present and not status_valid:
+        confirmed = False
     elif status in failed_statuses:
         confirmed = False
-    elif status is not None:
+    elif status_present:
         confirmed = status in accepted_statuses
     else:
         confirmed = bool(execution_id)
