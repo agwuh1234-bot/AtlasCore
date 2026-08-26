@@ -44,6 +44,21 @@ class SafeLoggingTests(unittest.TestCase):
         for leaked in ("'a'", "'b'", "'c'", "'d'", "'e'"):
             self.assertNotIn(leaked, rendered)
 
+    def test_embedded_auth_credentials_are_redacted_in_free_form_strings(self):
+        safe = sanitize_for_log({
+            "error": "upstream rejected Authorization: Bearer super-secret-token",
+            "note": "proxy used Basic dXNlcjpwYXNz and failed",
+        })
+        rendered = str(safe)
+        self.assertNotIn("super-secret-token", rendered)
+        self.assertNotIn("dXNlcjpwYXNz", rendered)
+        self.assertIn("Bearer <redacted>", safe["error"])
+        self.assertIn("Basic <redacted>", safe["note"])
+
+    def test_auth_scheme_words_without_credentials_are_preserved(self):
+        safe = sanitize_for_log({"note": "Bearer authentication and Basic authentication are supported"})
+        self.assertEqual(safe["note"], "Bearer authentication and Basic authentication are supported")
+
     def test_large_and_deep_payloads_are_bounded(self):
         value = {
             "items": list(range(100)),
