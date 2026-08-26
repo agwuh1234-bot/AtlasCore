@@ -107,6 +107,16 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
             "reason": "workflow_active_after_repair",
         }
 
+    verify_fingerprint = _workflow_fingerprint(verify_payload)
+    if not verify_fingerprint or verify_fingerprint == fingerprint:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=workflow_unchanged_after_repair")
+        return {
+            "ok": False,
+            "applied": True,
+            "verified": False,
+            "reason": "workflow_unchanged_after_repair",
+        }
+
     verify_plan = plan_safe_ecom_repair(verify_payload)
     verified = bool(verify_plan.get("ok") and not verify_plan.get("operations") and not verify_plan.get("remaining_issues"))
     if not verified:
