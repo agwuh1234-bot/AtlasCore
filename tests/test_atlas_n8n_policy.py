@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from atlas_n8n_policy import classify_tool, decision
+from atlas_n8n_policy import classify_tool, decision, preflight
 
 
 class N8NPolicyTests(unittest.TestCase):
@@ -30,6 +30,21 @@ class N8NPolicyTests(unittest.TestCase):
             os.environ.pop("N8N_DESTRUCTIVE_ENABLED", None)
             self.assertEqual(decision("create_workflow", "write"), (True, "ok"))
             self.assertEqual(decision("delete_workflow", "write"), (False, "destructive_disabled"))
+
+    def test_preflight_requires_exact_discovered_tool(self):
+        tools = [{"name": "list_workflows", "description": "List", "inputSchema": {"type": "object"}}]
+        missing = preflight(tools, "list_workflow", "read")
+        self.assertFalse(missing["found"])
+        self.assertFalse(missing["allowed"])
+        self.assertEqual(missing["reason"], "unknown_tool")
+
+    def test_preflight_returns_schema_without_executing(self):
+        tools = [{"name": "list_workflows", "description": "List", "inputSchema": {"type": "object", "properties": {}}}]
+        result = preflight(tools, "list_workflows", "read")
+        self.assertTrue(result["found"])
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["classification"], "read")
+        self.assertEqual(result["input_schema"]["type"], "object")
 
 
 if __name__ == "__main__":
