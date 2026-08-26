@@ -76,8 +76,9 @@ def _safe_params(node: dict[str, Any]) -> dict[str, Any]:
     if node_type == "@n8n/n8n-nodes-langchain.anthropic":
         safe = {"modelId": params.get("modelId")}
         messages = params.get("messages")
-        if messages is not None:
-            safe["messages"] = messages
+        if isinstance(messages, dict):
+            values = messages.get("values")
+            safe["message_count"] = len(values) if isinstance(values, list) else 0
         options = params.get("options")
         if isinstance(options, dict):
             safe["option_keys"] = sorted(options.keys())
@@ -109,6 +110,25 @@ def _collect_nodes(value: Any) -> list[dict[str, Any]]:
 
 def _has_node(value: Any, name: str) -> bool:
     return any(node.get("name") == name for node in _collect_nodes(value))
+
+
+def _has_connection(body: dict[str, Any], source: str, target: str) -> bool:
+    connections = body.get("connections")
+    if not isinstance(connections, dict):
+        return False
+    source_map = connections.get(source)
+    if not isinstance(source_map, dict):
+        return False
+    for outputs in source_map.values():
+        if not isinstance(outputs, list):
+            continue
+        for branch in outputs:
+            if not isinstance(branch, list):
+                continue
+            for edge in branch:
+                if isinstance(edge, dict) and edge.get("node") == target:
+                    return True
+    return False
 
 
 async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
@@ -184,11 +204,19 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
         body = _find_workflow_body(verify) or {}
         nodes = _collect_nodes(verify)
         by_name = {str(node.get("name")): node for node in nodes}
+        topology_ok = (
+            _has_connection(body, "When clicking ‘Execute workflow’", SHOPIFY_BRIEF_NODE)
+            and _has_connection(body, SHOPIFY_BRIEF_NODE, "Message a model1")
+            and not _has_connection(body, "When clicking ‘Execute workflow’", "HTTP Request")
+            and not _has_connection(body, "HTTP Request", "Message a model1")
+            and not _has_connection(body, "Message a model", "Edit a file")
+        )
         verified = (
             SHOPIFY_BRIEF_NODE in by_name
             and by_name.get("HTTP Request", {}).get("disabled") is True
             and by_name.get("HTTP Request1", {}).get("disabled") is True
             and by_name.get("Edit a file", {}).get("disabled") is True
+            and topology_ok
         )
         logger.info(
             "ECOMSX222_SHOPIFY_RESULT %s",
@@ -197,6 +225,7 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
                 "workflow_id": TARGET_WORKFLOW_ID,
                 "active": body.get("active"),
                 "node_count": len(nodes),
+                "topology_ok": topology_ok,
                 "nodes": [{"name": n.get("name"), "type": n.get("type"), "disabled": n.get("disabled")} for n in nodes],
                 "connections": body.get("connections", {}),
                 "update_result": result_payload,
