@@ -57,6 +57,15 @@ class EcomConnectionMetadataTests(unittest.TestCase):
         self.assertEqual(plan["operations"], [])
         self.assertIn(f"malformed_connection_output_type:{TRIGGER}", plan["remaining_issues"])
 
+    def test_nonzero_output_branch_with_edge_blocks_repair(self):
+        value = workflow()
+        edge = value["connections"][TRIGGER]["main"][0].pop()
+        value["connections"][TRIGGER]["main"].append([edge])
+        plan = plan_safe_ecom_repair(value)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertIn(f"unsupported_connection_branch_index:{TRIGGER}:1", plan["remaining_issues"])
+
 
 if __name__ == "__main__":
     unittest.main()
