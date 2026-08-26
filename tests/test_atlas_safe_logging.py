@@ -87,6 +87,21 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertIn("mode=test", safe["error"])
         self.assertIn("mode=test", safe["url"])
 
+    def test_known_provider_secrets_are_redacted_without_labels(self):
+        openai = "sk-1234567890abcdefghijklmnopqrstuv"
+        anthropic = "sk-ant-1234567890abcdefghijklmnop"
+        github = "ghp_1234567890abcdefghijklmnopqrstuv"
+        github_pat = "github_pat_1234567890abcdefghijklmnopqrstuv"
+        safe = sanitize_for_log({
+            "error": f"provider failure {openai} {anthropic}",
+            "note": f"github auth failed {github} and {github_pat}",
+        })
+        rendered = str(safe)
+        for leaked in (openai, anthropic, github, github_pat):
+            self.assertNotIn(leaked, rendered)
+        self.assertEqual(safe["error"].count("<redacted-secret>"), 2)
+        self.assertEqual(safe["note"].count("<redacted-secret>"), 2)
+
     def test_sensitive_url_query_parameters_are_redacted(self):
         safe = sanitize_for_log({
             "url": "https://example.test/hook?token=secret-token&next=/ok&api_key=key-123",
