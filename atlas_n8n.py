@@ -48,5 +48,13 @@ async def list_tools():
 
 
 async def call_tool(name: str, arguments: dict | None = None):
+    tool_name = (name or "").strip()
+    if not tool_name:
+        raise N8NBridgeError("n8n tool name is required")
+
     async with n8n_session() as session:
-        return await session.call_tool(name, arguments or {})
+        discovered = await session.list_tools()
+        available_names = {tool.name for tool in discovered.tools}
+        if tool_name not in available_names:
+            raise N8NBridgeError(f"Unknown n8n MCP tool: {tool_name}")
+        return await session.call_tool(tool_name, arguments or {})
