@@ -100,6 +100,14 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+    def test_missing_or_malformed_partial_operations_fail_closed(self):
+        self.assertTrue(atlas_n8n._contains_destructive_workflow_operation({"workflowId": "1"}))
+        self.assertTrue(
+            atlas_n8n._contains_destructive_workflow_operation(
+                {"workflowId": "1", "operations": {"type": "addNode"}}
+            )
+        )
+
     async def test_await_mcp_fails_closed_on_timeout(self):
         async def slow():
             await asyncio.sleep(0.05)
@@ -222,6 +230,23 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
             os.environ.pop("N8N_DESTRUCTIVE_ENABLED", None)
             with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "destructive_disabled"):
                 await atlas_n8n.call_tool("update_workflow", arguments)
+        session.call_tool.assert_not_awaited()
+
+    async def test_malformed_partial_update_requires_destructive_opt_in(self):
+        tool = type("Tool", (), {"name": "n8n_update_partial_workflow"})()
+        session = AsyncMock()
+        session.list_tools.return_value = type("Result", (), {"tools": [tool]})()
+
+        class FakeContext:
+            async def __aenter__(self):
+                return session
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch.dict(os.environ, {"N8N_WRITES_ENABLED": "true"}, clear=False), patch.object(atlas_n8n, "n8n_session", return_value=FakeContext()):
+            os.environ.pop("N8N_DESTRUCTIVE_ENABLED", None)
+            with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "destructive_disabled"):
+                await atlas_n8n.call_tool("n8n_update_partial_workflow", {"workflowId": "1"})
         session.call_tool.assert_not_awaited()
 
     async def test_list_tools_exposes_only_public_schema(self):
