@@ -61,7 +61,9 @@ _KNOWN_PROVIDER_SECRET_RE = re.compile(
     r"shppa_[A-Za-z0-9_-]{16,}|"
     r"shpss_[A-Za-z0-9_-]{16,}|"
     r"xox[baprs]-[A-Za-z0-9-]{16,}|"
-    r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}"
+    r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|"
+    r"(?:AKIA|ASIA)[A-Z0-9]{16}|"
+    r"AIza[A-Za-z0-9_-]{35}"
     r")(?![A-Za-z0-9_-])"
 )
 
