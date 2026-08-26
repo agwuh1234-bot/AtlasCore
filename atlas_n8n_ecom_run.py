@@ -8,6 +8,7 @@ live discovery and write-policy checks before any execution tool call.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from typing import Any
@@ -22,6 +23,15 @@ EXECUTE_TOOL = "execute_workflow"
 
 def _enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _workflow_fingerprint(details_payload: Any) -> str | None:
+    """Return a stable digest of the live workflow body without logging content."""
+    body = _find_workflow_body(details_payload)
+    if not isinstance(body, dict):
+        return None
+    canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def execution_readiness(details_payload: Any) -> dict[str, Any]:
@@ -69,6 +79,7 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
         )
         details_payload = _payload(details)
         readiness = execution_readiness(details_payload)
+        first_fingerprint = _workflow_fingerprint(details_payload)
         if not readiness["ready"]:
             logger.warning(
                 "ECOMSX222_RUN_RESULT %s",
@@ -88,6 +99,46 @@ async def maybe_run_ecomsx222_safe(logger) -> dict[str, Any]:
                 "executed": False,
                 "reason": "safety_check_failed",
                 "issues": readiness["issues"],
+            }
+
+        # Re-read immediately before execution and require an identical live body.
+        # This narrows the TOCTOU window: any concurrent edit/activation aborts.
+        confirm = await call_tool(
+            "get_workflow_details",
+            {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"},
+        )
+        confirm_payload = _payload(confirm)
+        confirm_readiness = execution_readiness(confirm_payload)
+        second_fingerprint = _workflow_fingerprint(confirm_payload)
+        if (
+            not first_fingerprint
+            or not second_fingerprint
+            or first_fingerprint != second_fingerprint
+            or not confirm_readiness["ready"]
+        ):
+            issues = list(confirm_readiness.get("issues") or [])
+            if first_fingerprint != second_fingerprint:
+                issues.append("workflow_changed_during_preflight")
+            if not first_fingerprint or not second_fingerprint:
+                issues.append("workflow_fingerprint_unavailable")
+            logger.warning(
+                "ECOMSX222_RUN_RESULT %s",
+                json.dumps(
+                    {
+                        "ok": False,
+                        "executed": False,
+                        "reason": "preflight_changed",
+                        "workflow_id": TARGET_WORKFLOW_ID,
+                        "issues": issues,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+            return {
+                "ok": False,
+                "executed": False,
+                "reason": "preflight_changed",
+                "issues": issues,
             }
 
         result = await call_tool(EXECUTE_TOOL, {"workflowId": TARGET_WORKFLOW_ID})
