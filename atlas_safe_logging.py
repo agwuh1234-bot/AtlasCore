@@ -32,6 +32,9 @@ _AUTH_VALUE_RE = re.compile(r"(?i)\b(bearer|basic)\s+[^\s,;]+")
 _QUERY_CREDENTIAL_RE = re.compile(
     r"(?i)([?&](?:access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|token|secret|password|cookie)=)([^&#\s]+)"
 )
+_URL_USERINFO_RE = re.compile(
+    r"(?i)\b([a-z][a-z0-9+.-]*://)([^/@\s:]+):([^/@\s]+)@"
+)
 _JWT_LIKE_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:eyJ[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})(?![A-Za-z0-9_-])"
 )
@@ -55,6 +58,7 @@ def _sanitize_string(value: str) -> str:
     """Redact common auth credentials even when embedded in a free-form string."""
     redacted = _AUTH_VALUE_RE.sub(lambda match: f"{match.group(1)} <redacted>", value)
     redacted = _QUERY_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
+    redacted = _URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}<redacted>@", redacted)
     redacted = _JWT_LIKE_RE.sub("<redacted-jwt>", redacted)
     if len(redacted) > 500:
         return redacted[:500] + "…<truncated>"
