@@ -36,6 +36,36 @@ def _tool_call_reported_error(value: Any) -> bool:
     return getattr(value, "isError", False) is True or getattr(value, "is_error", False) is True
 
 
+async def _reconcile_ambiguous_update(logger, original_fingerprint: str, reason: str) -> dict[str, Any]:
+    """Read back after an ambiguous write without issuing any additional mutation."""
+    try:
+        verify = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
+    except Exception:
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_read_exception", reason)
+        return {"ok": False, "applied": True, "verified": False, "reason": reason}
+
+    if _tool_call_reported_error(verify):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_read_tool_error", reason)
+        return {"ok": False, "applied": True, "verified": False, "reason": reason}
+
+    verify_payload = _payload(verify)
+    if not _explicitly_inactive(verify_payload):
+        logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=%s_reconciliation_active_or_unknown", reason)
+        return {"ok": False, "applied": True, "verified": False, "reason": reason}
+
+    verify_fingerprint = _workflow_fingerprint(verify_payload)
+    if not verify_fingerprint or verify_fingerprint == original_fingerprint:
+        return {"ok": False, "applied": True, "verified": False, "reason": reason}
+
+    verify_plan = plan_safe_ecom_repair(verify_payload)
+    verified = bool(verify_plan.get("ok") and not verify_plan.get("operations") and not verify_plan.get("remaining_issues"))
+    if not verified:
+        return {"ok": False, "applied": True, "verified": False, "reason": reason}
+
+    logger.info("ECOMSX222_REPAIR_RESULT ok=true applied=true verified=true reconciled=true")
+    return {"ok": True, "applied": True, "verified": True, "reconciled": True}
+
+
 async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
     if not _enabled(REPAIR_FLAG):
         return {"ok": False, "applied": False, "reason": "repair_flag_disabled"}
@@ -94,21 +124,11 @@ async def maybe_apply_safe_ecom_repair(logger) -> dict[str, Any]:
         update_result = await call_tool(UPDATE_TOOL, {"workflowId": TARGET_WORKFLOW_ID, "operations": plan["operations"]})
     except Exception:
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=update_exception")
-        return {
-            "ok": False,
-            "applied": True,
-            "verified": False,
-            "reason": "repair_update_exception",
-        }
+        return await _reconcile_ambiguous_update(logger, fingerprint, "repair_update_exception")
 
     if _tool_call_reported_error(update_result):
         logger.warning("ECOMSX222_REPAIR_RESULT ok=false applied=true verified=false reason=update_tool_reported_error")
-        return {
-            "ok": False,
-            "applied": True,
-            "verified": False,
-            "reason": "repair_update_tool_error",
-        }
+        return await _reconcile_ambiguous_update(logger, fingerprint, "repair_update_tool_error")
 
     try:
         verify = await call_tool("get_workflow_details", {"workflowId": TARGET_WORKFLOW_ID, "detailLevel": "full"})
