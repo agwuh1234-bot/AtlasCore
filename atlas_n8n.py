@@ -88,6 +88,11 @@ def _contains_destructive_workflow_operation(arguments: dict) -> bool:
         op_type = str(operation.get("type") or "").strip().lower()
         if op_type.startswith("remove") or op_type.startswith("delete"):
             return True
+        # Current n8n partial updates represent disabling as setNodeDisabled
+        # with a boolean payload. Disabling reachable workflow nodes can break a
+        # production path, so require the same destructive opt-in as removals.
+        if op_type == "setnodedisabled" and operation.get("disabled") is True:
+            return True
     return False
 
 
