@@ -73,7 +73,7 @@ class EcomRepairGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_update_exception_is_marked_as_ambiguous_applied(self):
         workflow = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
         plan = {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []}
-        call = AsyncMock(side_effect=[workflow, workflow, RuntimeError("transport lost after send")])
+        call = AsyncMock(side_effect=[workflow, workflow, RuntimeError("transport lost after send"), workflow])
         logger = Mock()
         with patch.object(gate, "_enabled", return_value=True), patch.object(gate, "configured", return_value=True), patch.object(gate, "decision", return_value=(True, "ok")), patch.object(gate, "call_tool", call), patch.object(gate, "_payload", side_effect=lambda x: x), patch.object(gate, "_workflow_fingerprint", return_value="stable-fingerprint"), patch.object(gate, "plan_safe_ecom_repair", return_value=plan):
             result = await gate.maybe_apply_safe_ecom_repair(logger)
@@ -86,7 +86,7 @@ class EcomRepairGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_update_tool_error_result_is_ambiguous_applied(self):
         workflow = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
         plan = {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []}
-        call = AsyncMock(side_effect=[workflow, workflow, {"isError": True, "content": [{"type": "text", "text": "update rejected"}]}])
+        call = AsyncMock(side_effect=[workflow, workflow, {"isError": True, "content": [{"type": "text", "text": "update rejected"}]}, workflow])
         logger = Mock()
         with patch.object(gate, "_enabled", return_value=True), patch.object(gate, "configured", return_value=True), patch.object(gate, "decision", return_value=(True, "ok")), patch.object(gate, "call_tool", call), patch.object(gate, "_payload", side_effect=lambda x: x), patch.object(gate, "_workflow_fingerprint", return_value="stable-fingerprint"), patch.object(gate, "plan_safe_ecom_repair", return_value=plan):
             result = await gate.maybe_apply_safe_ecom_repair(logger)
@@ -95,6 +95,47 @@ class EcomRepairGateTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["verified"])
         self.assertEqual(result["reason"], "repair_update_tool_error")
         self.assertEqual(call.await_count, 4)
+
+    async def test_ambiguous_repair_requires_two_identical_verified_readbacks(self):
+        before = {"nodes": [{"name": "before"}], "connections": {}, "active": False}
+        repaired = {"nodes": [{"name": "repaired"}], "connections": {}, "active": False}
+        call = AsyncMock(side_effect=[before, before, RuntimeError("transport lost after send"), repaired, repaired])
+        logger = Mock()
+        fingerprints = iter(["before-fp", "before-fp", "repaired-fp", "repaired-fp"])
+        plans = iter([
+            {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []},
+            {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []},
+            {"ok": True, "operations": [], "remaining_issues": []},
+            {"ok": True, "operations": [], "remaining_issues": []},
+        ])
+        with patch.object(gate, "_enabled", return_value=True), patch.object(gate, "configured", return_value=True), patch.object(gate, "decision", return_value=(True, "ok")), patch.object(gate, "call_tool", call), patch.object(gate, "_payload", side_effect=lambda x: x), patch.object(gate, "_workflow_fingerprint", side_effect=lambda _: next(fingerprints)), patch.object(gate, "plan_safe_ecom_repair", side_effect=lambda _: next(plans)):
+            result = await gate.maybe_apply_safe_ecom_repair(logger)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["applied"])
+        self.assertTrue(result["verified"])
+        self.assertTrue(result["reconciled"])
+        self.assertEqual(call.await_count, 5)
+
+    async def test_ambiguous_repair_changed_between_readbacks_is_not_verified(self):
+        before = {"nodes": [{"name": "before"}], "connections": {}, "active": False}
+        repaired_a = {"nodes": [{"name": "repaired-a"}], "connections": {}, "active": False}
+        repaired_b = {"nodes": [{"name": "repaired-b"}], "connections": {}, "active": False}
+        call = AsyncMock(side_effect=[before, before, RuntimeError("transport lost after send"), repaired_a, repaired_b])
+        logger = Mock()
+        fingerprints = iter(["before-fp", "before-fp", "repaired-a-fp", "repaired-b-fp"])
+        plans = iter([
+            {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []},
+            {"ok": True, "operations": [{"type": "removeConnection"}], "remaining_issues": []},
+            {"ok": True, "operations": [], "remaining_issues": []},
+            {"ok": True, "operations": [], "remaining_issues": []},
+        ])
+        with patch.object(gate, "_enabled", return_value=True), patch.object(gate, "configured", return_value=True), patch.object(gate, "decision", return_value=(True, "ok")), patch.object(gate, "call_tool", call), patch.object(gate, "_payload", side_effect=lambda x: x), patch.object(gate, "_workflow_fingerprint", side_effect=lambda _: next(fingerprints)), patch.object(gate, "plan_safe_ecom_repair", side_effect=lambda _: next(plans)):
+            result = await gate.maybe_apply_safe_ecom_repair(logger)
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["applied"])
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["reason"], "repair_update_exception")
+        self.assertEqual(call.await_count, 5)
 
     async def test_verification_read_exception_is_fail_closed(self):
         workflow = {"nodes": [{"name": "stable"}], "connections": {}, "active": False}
