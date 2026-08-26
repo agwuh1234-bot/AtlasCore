@@ -117,6 +117,17 @@ class SafeLoggingTests(unittest.TestCase):
         self.assertEqual(safe["error"].count("<redacted-secret>"), 2)
         self.assertEqual(safe["note"].count("<redacted-secret>"), 2)
 
+    def test_telegram_bot_tokens_are_redacted_without_labels(self):
+        telegram_token = "1234567890:" + "AbCdEfGhIjKlMnOpQrStUvWxYz_123456789"
+        safe = sanitize_for_log({
+            "error": f"telegram getMe failed for {telegram_token}",
+            "note": "chat_id=1234567890 should remain visible",
+        })
+        rendered = str(safe)
+        self.assertNotIn(telegram_token, rendered)
+        self.assertIn("<redacted-telegram-token>", safe["error"])
+        self.assertEqual(safe["note"], "chat_id=1234567890 should remain visible")
+
     def test_sensitive_url_query_parameters_are_redacted(self):
         safe = sanitize_for_log({
             "url": "https://example.test/hook?token=secret-token&next=/ok&api_key=key-123",
