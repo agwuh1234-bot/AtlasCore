@@ -3,6 +3,10 @@ import unittest
 from atlas_n8n_ecom_repair import plan_safe_ecom_repair
 
 
+def edge(node):
+    return {"node": node, "type": "main", "index": 0}
+
+
 def workflow(connections):
     return {
         "nodes": [
@@ -19,10 +23,10 @@ def workflow(connections):
 class EcomRepairPlannerTests(unittest.TestCase):
     def test_live_legacy_edge_produces_exact_remove_operation(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
-            "Message a model": {"main": [[{"node": "Edit a file"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
+            "Message a model": {"main": [[edge("Edit a file")]]},
         })
         plan = plan_safe_ecom_repair(value)
         self.assertTrue(plan["dry_run"])
@@ -36,10 +40,10 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_duplicate_forbidden_edge_blocks_all_planned_writes(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
-            "Message a model": {"main": [[{"node": "Edit a file"}, {"node": "Edit a file"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
+            "Message a model": {"main": [[edge("Edit a file"), edge("Edit a file")]]},
         })
         plan = plan_safe_ecom_repair(value)
         self.assertFalse(plan["ok"])
@@ -48,9 +52,9 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_duplicate_required_edge_blocks_all_planned_writes(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}, {"node": "Shopify Build Brief"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief"), edge("Shopify Build Brief")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
         })
         plan = plan_safe_ecom_repair(value)
         self.assertFalse(plan["ok"])
@@ -59,8 +63,8 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_missing_required_edge_is_planned_without_execution(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
         })
         plan = plan_safe_ecom_repair(value)
         self.assertIn({
@@ -71,9 +75,9 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_unknown_safety_issue_remains_blocker(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}, {"node": "Mystery"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief"), edge("Mystery")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
         })
         value["nodes"].append({"name": "Mystery", "type": "n8n-nodes-base.code", "disabled": False})
         plan = plan_safe_ecom_repair(value)
@@ -82,10 +86,10 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_legacy_removal_does_not_hide_other_reachable_unknown_node(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}, {"node": "Mystery"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
-            "Message a model": {"main": [[{"node": "Edit a file"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief"), edge("Mystery")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
+            "Message a model": {"main": [[edge("Edit a file")]]},
         })
         value["nodes"].append({"name": "Mystery", "type": "n8n-nodes-base.code", "disabled": False})
         plan = plan_safe_ecom_repair(value)
@@ -95,10 +99,10 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_dangling_disconnected_target_blocks_all_planned_writes(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
-            "Orphan Source": {"main": [[{"node": "Missing Target"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
+            "Orphan Source": {"main": [[edge("Missing Target")]]},
         })
         value["nodes"].append({"name": "Orphan Source", "type": "n8n-nodes-base.noOp", "disabled": True})
         plan = plan_safe_ecom_repair(value)
@@ -108,10 +112,10 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_dangling_source_blocks_all_planned_writes(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
-            "Missing Source": {"main": [[{"node": "Edit a file"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
+            "Missing Source": {"main": [[edge("Edit a file")]]},
         })
         plan = plan_safe_ecom_repair(value)
         self.assertFalse(plan["ok"])
@@ -120,8 +124,8 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_missing_required_node_blocks_all_planned_writes(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
         })
         value["nodes"] = [node for node in value["nodes"] if node["name"] != "Shopify Build Brief"]
         plan = plan_safe_ecom_repair(value)
@@ -131,10 +135,10 @@ class EcomRepairPlannerTests(unittest.TestCase):
 
     def test_wrong_required_node_type_blocks_all_planned_writes(self):
         value = workflow({
-            "When clicking ‘Execute workflow’": {"main": [[{"node": "Shopify Build Brief"}]]},
-            "Shopify Build Brief": {"main": [[{"node": "Message a model1"}]]},
-            "Message a model1": {"main": [[{"node": "Message a model"}]]},
-            "Message a model": {"main": [[{"node": "Edit a file"}]]},
+            "When clicking ‘Execute workflow’": {"main": [[edge("Shopify Build Brief")]]},
+            "Shopify Build Brief": {"main": [[edge("Message a model1")]]},
+            "Message a model1": {"main": [[edge("Message a model")]]},
+            "Message a model": {"main": [[edge("Edit a file")]]},
         })
         for node in value["nodes"]:
             if node["name"] == "Message a model":
