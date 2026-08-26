@@ -48,6 +48,28 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "undeclared field"):
             atlas_n8n._validate_arguments_against_schema({"workflowId": "1", "debug": True}, schema)
 
+    def test_schema_validation_enforces_string_length_bounds(self):
+        schema = {
+            "type": "object",
+            "properties": {"workflowId": {"type": "string", "minLength": 2, "maxLength": 5}},
+        }
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "shorter than minLength"):
+            atlas_n8n._validate_arguments_against_schema({"workflowId": "1"}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "exceeds maxLength"):
+            atlas_n8n._validate_arguments_against_schema({"workflowId": "123456"}, schema)
+        atlas_n8n._validate_arguments_against_schema({"workflowId": "123"}, schema)
+
+    def test_schema_validation_enforces_array_size_bounds(self):
+        schema = {
+            "type": "object",
+            "properties": {"operations": {"type": "array", "minItems": 1, "maxItems": 2}},
+        }
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "fewer than minItems"):
+            atlas_n8n._validate_arguments_against_schema({"operations": []}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "exceeds maxItems"):
+            atlas_n8n._validate_arguments_against_schema({"operations": [{}, {}, {}]}, schema)
+        atlas_n8n._validate_arguments_against_schema({"operations": [{}]}, schema)
+
     async def test_await_mcp_fails_closed_on_timeout(self):
         async def slow():
             await asyncio.sleep(0.05)
