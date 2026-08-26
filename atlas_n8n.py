@@ -84,20 +84,37 @@ def _is_partial_workflow_tool(tool_name: str) -> bool:
     return normalized == "update_workflow" or normalized.endswith("update_partial_workflow")
 
 
+_NON_DESTRUCTIVE_PARTIAL_OPERATIONS = {
+    "addnode",
+    "updatenode",
+    "updatenodeparameters",
+    "addconnection",
+}
+
+
 def _contains_destructive_workflow_operation(arguments: dict) -> bool:
     operations = arguments.get("operations")
     if not isinstance(operations, list):
         return False
     for operation in operations:
+        # Partial workflow mutation is security-sensitive. Malformed or newly
+        # introduced operation shapes must not silently inherit ordinary write access.
         if not isinstance(operation, dict):
-            continue
+            return True
         op_type = str(operation.get("type") or "").strip().lower()
+        if not op_type:
+            return True
         if op_type.startswith("remove") or op_type.startswith("delete"):
             return True
         # Both the native n8n MCP and common n8n MCP bridges expose partial
         # workflow-edit operations. Treat any operation that can disable a live
         # path or replace/rewire topology as destructive, regardless of tool prefix.
-        if op_type == "setnodedisabled" and operation.get("disabled") is True:
+        if op_type == "setnodedisabled":
+            # Re-enabling a node is a normal write; disabling it can remove a live path.
+            if operation.get("disabled") is True:
+                return True
+            if operation.get("disabled") is False:
+                continue
             return True
         if op_type in {
             "disablenode",
@@ -106,6 +123,9 @@ def _contains_destructive_workflow_operation(arguments: dict) -> bool:
             "rewireconnection",
             "cleanstaleconnections",
         }:
+            return True
+        if op_type not in _NON_DESTRUCTIVE_PARTIAL_OPERATIONS:
+            # Fail closed when n8n/MCP adds an operation Atlas has not reviewed yet.
             return True
     return False
 
