@@ -94,8 +94,10 @@ _NON_DESTRUCTIVE_PARTIAL_OPERATIONS = {
 
 def _contains_destructive_workflow_operation(arguments: dict) -> bool:
     operations = arguments.get("operations")
+    # A partial-workflow call without a valid operation list is ambiguous. Treat it
+    # as destructive so ordinary write access can never pass a malformed/new shape.
     if not isinstance(operations, list):
-        return False
+        return True
     for operation in operations:
         # Partial workflow mutation is security-sensitive. Malformed or newly
         # introduced operation shapes must not silently inherit ordinary write access.
