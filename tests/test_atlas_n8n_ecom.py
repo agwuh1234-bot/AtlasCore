@@ -1,6 +1,6 @@
 import os
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import atlas_n8n_ecom as ecom
 
@@ -122,7 +122,7 @@ class AtlasN8NEcomTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(operations, [])
 
     async def test_upgrade_is_fail_closed_when_feature_flag_is_off(self):
-        logger = AsyncMock()
+        logger = MagicMock()
         with patch.dict(os.environ, {"N8N_UPGRADE_ECOMSX222_SHOPIFY": ""}, clear=False), \
              patch.object(ecom, "configured", return_value=True), \
              patch.object(ecom, "call_tool", new=AsyncMock()) as call_tool:
@@ -131,7 +131,7 @@ class AtlasN8NEcomTests(unittest.IsolatedAsyncioTestCase):
         call_tool.assert_not_awaited()
 
     async def test_upgrade_does_not_call_n8n_when_policy_blocks_write(self):
-        logger = AsyncMock()
+        logger = MagicMock()
         with patch.dict(os.environ, {"N8N_UPGRADE_ECOMSX222_SHOPIFY": "1"}, clear=False), \
              patch.object(ecom, "configured", return_value=True), \
              patch.object(ecom, "decision", return_value=(False, "writes_disabled")), \
