@@ -8,7 +8,7 @@ from atlas_n8n_ecom import (
     _has_connection,
     _workflow_safety_summary,
 )
-from atlas_n8n_graph_safety import connection_count
+from atlas_n8n_graph_safety import connection_count, connection_shape_issues
 
 TRIGGER_NODE = "When clicking ‘Execute workflow’"
 
@@ -219,7 +219,7 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
             "remaining_issues": safety_issues,
         }
 
-    graph_issues = _dangling_connection_issues(body)
+    graph_issues = list(dict.fromkeys([*connection_shape_issues(body), *_dangling_connection_issues(body)]))
     if graph_issues:
         return {
             "ok": False,
