@@ -39,6 +39,15 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "not an allowed value"):
             atlas_n8n._validate_arguments_against_schema({"mode": "danger"}, schema)
 
+    def test_schema_validation_rejects_undeclared_fields_when_forbidden(self):
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"workflowId": {"type": "string"}},
+        }
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "undeclared field"):
+            atlas_n8n._validate_arguments_against_schema({"workflowId": "1", "debug": True}, schema)
+
     async def test_await_mcp_fails_closed_on_timeout(self):
         async def slow():
             await asyncio.sleep(0.05)
