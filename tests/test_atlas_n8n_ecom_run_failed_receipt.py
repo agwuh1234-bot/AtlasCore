@@ -95,12 +95,19 @@ class FailedExecutionReceiptTests(unittest.TestCase):
         self.assertTrue(receipt["workflow_id_conflict"])
         self.assertFalse(receipt["workflow_id_matches"])
 
-    def test_malformed_secondary_execution_alias_fails_closed(self):
-        receipt = run_gate._execution_receipt(
-            {"executionId": "123", "id": {"value": "123"}, "status": "success"}
-        )
+    def test_generic_id_does_not_confirm_execution(self):
+        receipt = run_gate._execution_receipt({"id": "123", "status": "success"})
         self.assertFalse(receipt["confirmed"])
-        self.assertTrue(receipt["execution_id_conflict"])
+        self.assertFalse(receipt["execution_id_present"])
+        self.assertFalse(receipt["execution_id_conflict"])
+
+    def test_generic_id_is_ignored_when_execution_id_is_valid(self):
+        receipt = run_gate._execution_receipt(
+            {"executionId": "123", "id": {"unrelated": True}, "status": "success"}
+        )
+        self.assertTrue(receipt["confirmed"])
+        self.assertTrue(receipt["execution_id_present"])
+        self.assertFalse(receipt["execution_id_conflict"])
 
     def test_container_execution_id_is_rejected(self):
         receipt = run_gate._execution_receipt({"executionId": {"id": "123"}})
