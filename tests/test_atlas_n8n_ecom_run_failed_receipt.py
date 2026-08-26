@@ -32,6 +32,22 @@ class FailedExecutionReceiptTests(unittest.TestCase):
         receipt = run_gate._execution_receipt({"executionId": "123", "status": "success"})
         self.assertTrue(receipt["confirmed"])
 
+    def test_matching_workflow_id_is_confirmed(self):
+        receipt = run_gate._execution_receipt(
+            {"executionId": "123", "status": "success", "workflowId": run_gate.TARGET_WORKFLOW_ID}
+        )
+        self.assertTrue(receipt["confirmed"])
+        self.assertTrue(receipt["workflow_id_present"])
+        self.assertTrue(receipt["workflow_id_matches"])
+
+    def test_mismatched_workflow_id_fails_closed_even_on_success(self):
+        receipt = run_gate._execution_receipt(
+            {"executionId": "123", "status": "success", "workflowId": "other-workflow"}
+        )
+        self.assertFalse(receipt["confirmed"])
+        self.assertTrue(receipt["workflow_id_present"])
+        self.assertFalse(receipt["workflow_id_matches"])
+
 
 if __name__ == "__main__":
     unittest.main()
