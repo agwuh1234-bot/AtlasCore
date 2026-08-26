@@ -22,10 +22,25 @@ SENSITIVE_KEYS = {
     "credentials",
 }
 
+_SENSITIVE_CANONICAL_KEYS = {
+    "".join(character for character in item.lower() if character.isalnum())
+    for item in SENSITIVE_KEYS
+}
+_SENSITIVE_SUFFIXES = ("token", "secret", "password", "cookie", "credentials")
+
+
+def _canonical_key(key: Any) -> str:
+    return "".join(character for character in str(key).strip().lower() if character.isalnum())
+
 
 def _is_sensitive_key(key: Any) -> bool:
-    normalized = str(key).strip().lower().replace("-", "_")
-    return normalized in {item.replace("-", "_") for item in SENSITIVE_KEYS}
+    canonical = _canonical_key(key)
+    if canonical in _SENSITIVE_CANONICAL_KEYS:
+        return True
+    # Fail closed for common credential-field variants such as accessToken,
+    # client-secret, webhook_token and session_cookie without broadly matching
+    # unrelated keys that merely contain words like "key".
+    return any(canonical.endswith(suffix) for suffix in _SENSITIVE_SUFFIXES)
 
 
 def sanitize_for_log(value: Any, *, max_depth: int = 5, max_items: int = 50) -> Any:
