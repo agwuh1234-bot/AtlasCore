@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 
 import main as atlas
@@ -147,6 +148,16 @@ async def _probe_n8n():
     try:
         tools = await asyncio.wait_for(n8n_list(), timeout=10)
         atlas.logger.info("N8N_MCP_PROBE ok=true tool_count=%d", len(tools))
+        if os.environ.get("N8N_DEBUG_DISCOVERY", "").strip().lower() in {"1", "true", "yes", "on"}:
+            for tool in tools:
+                name = str(tool.get("name") or "")
+                lowered = name.lower()
+                if "workflow" in lowered and any(word in lowered for word in ("create", "list", "search", "get")):
+                    atlas.logger.info(
+                        "N8N_TOOL_DISCOVERY name=%s schema=%s",
+                        name[:120],
+                        json.dumps(tool.get("inputSchema") or {}, ensure_ascii=False, default=str)[:5000],
+                    )
     except asyncio.TimeoutError:
         atlas.logger.warning("N8N_MCP_PROBE ok=false error=timeout")
     except Exception as exc:
