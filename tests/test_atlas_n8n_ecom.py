@@ -32,6 +32,25 @@ class AtlasN8NEcomTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("body", safe)
         self.assertNotIn("super-secret", repr(safe))
 
+    def test_safe_params_redacts_model_message_content(self):
+        node = {
+            "name": "Message a model",
+            "type": "@n8n/n8n-nodes-langchain.anthropic",
+            "parameters": {
+                "modelId": "claude-test",
+                "messages": {"values": [{"content": "token=super-secret"}]},
+                "options": {"temperature": 0.2},
+            },
+        }
+
+        safe = ecom._safe_params(node)
+
+        self.assertEqual(safe["modelId"], "claude-test")
+        self.assertEqual(safe["message_count"], 1)
+        self.assertEqual(safe["option_keys"], ["temperature"])
+        self.assertNotIn("super-secret", repr(safe))
+        self.assertNotIn("messages", safe)
+
     def test_collect_nodes_exposes_only_credential_types(self):
         workflow = {
             "nodes": [
@@ -63,6 +82,19 @@ class AtlasN8NEcomTests(unittest.IsolatedAsyncioTestCase):
             ]
         }
         self.assertEqual(ecom._find_workflow(payload, "ecomsx222")["id"], "wf-1")
+
+    def test_has_connection_reads_n8n_main_topology(self):
+        body = {
+            "connections": {
+                "Start": {
+                    "main": [[{"node": "Shopify Build Brief", "type": "main", "index": 0}]]
+                }
+            }
+        }
+
+        self.assertTrue(ecom._has_connection(body, "Start", "Shopify Build Brief"))
+        self.assertFalse(ecom._has_connection(body, "Start", "HTTP Request"))
+        self.assertFalse(ecom._has_connection(body, "Missing", "Shopify Build Brief"))
 
     async def test_upgrade_is_fail_closed_when_feature_flag_is_off(self):
         logger = AsyncMock()
