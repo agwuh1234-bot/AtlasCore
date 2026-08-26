@@ -153,7 +153,7 @@ async def _probe_n8n():
             for tool in tools:
                 name = str(tool.get("name") or "")
                 lowered = name.lower()
-                if "workflow" in lowered and any(word in lowered for word in ("create", "list", "search", "get")):
+                if "workflow" in lowered and any(word in lowered for word in ("create", "list", "search", "get", "update", "edit", "patch")):
                     atlas.logger.info(
                         "N8N_TOOL_DISCOVERY name=%s schema=%s",
                         name[:120],
