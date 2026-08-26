@@ -47,7 +47,7 @@ def _connection_targets(connections: Any) -> dict[str, set[str]]:
     return graph
 
 
-def _planned_reachable_nodes(body: dict[str, Any], operations: list[dict[str, Any]]) -> set[str]:
+def _planned_graph(body: dict[str, Any], operations: list[dict[str, Any]]) -> dict[str, set[str]]:
     graph = _connection_targets(body.get("connections"))
 
     for operation in operations:
@@ -59,7 +59,11 @@ def _planned_reachable_nodes(body: dict[str, Any], operations: list[dict[str, An
             graph.setdefault(source, set()).discard(target)
         elif operation.get("type") == "addConnection":
             graph.setdefault(source, set()).add(target)
+    return graph
 
+
+def _planned_reachable_nodes(body: dict[str, Any], operations: list[dict[str, Any]]) -> set[str]:
+    graph = _planned_graph(body, operations)
     reachable: set[str] = set()
     stack = [TRIGGER_NODE]
     while stack:
@@ -69,6 +73,28 @@ def _planned_reachable_nodes(body: dict[str, Any], operations: list[dict[str, An
         reachable.add(current)
         stack.extend(graph.get(current, ()))
     return reachable
+
+
+def _planned_reachable_cycle(body: dict[str, Any], operations: list[dict[str, Any]]) -> bool:
+    """Return True when the planned graph has a cycle reachable from the manual trigger."""
+    graph = _planned_graph(body, operations)
+    visited: set[str] = set()
+    active: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in active:
+            return True
+        if node in visited:
+            return False
+        visited.add(node)
+        active.add(node)
+        for target in graph.get(node, ()):
+            if visit(target):
+                return True
+        active.remove(node)
+        return False
+
+    return visit(TRIGGER_NODE)
 
 
 def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
@@ -126,6 +152,9 @@ def plan_safe_ecom_repair(value: Any) -> dict[str, Any]:
             if node_name not in planned_reachable:
                 continue
         remaining.append(issue)
+
+    if _planned_reachable_cycle(body, operations):
+        remaining.append("reachable_cycle")
 
     return {
         "ok": not remaining,
