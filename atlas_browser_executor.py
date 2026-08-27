@@ -60,6 +60,8 @@ class BrowserExecutor:
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise BrowserExecutorError("Only public http/https URLs are allowed")
+        if parsed.username is not None or parsed.password is not None:
+            raise BrowserExecutorError("Embedded URL credentials are not allowed")
         host = parsed.hostname.lower()
         if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
             raise BrowserExecutorError("Local/private targets are blocked")
