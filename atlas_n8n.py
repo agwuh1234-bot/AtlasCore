@@ -223,8 +223,66 @@ def _validate_numeric_constraints(key: str, value, prop: dict) -> None:
         )
 
 
+def _validate_nested_schema_value(path: str, value, schema: dict) -> None:
+    """Recursively validate nested object/array values against the live MCP schema."""
+    expected = schema.get("type")
+    if isinstance(expected, (str, list)) and not _matches_declared_type(value, expected):
+        expected_label = expected if isinstance(expected, str) else " or ".join(
+            item for item in expected if isinstance(item, str)
+        )
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {path} must be {expected_label or 'a declared type'}"
+        )
+
+    if "const" in schema and value != schema.get("const"):
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {path} does not match const"
+        )
+    allowed_values = schema.get("enum")
+    if isinstance(allowed_values, list) and value not in allowed_values:
+        raise N8NBridgeError(
+            f"n8n tool arguments failed schema validation: {path} is not an allowed value"
+        )
+    _validate_size_constraints(path, value, schema)
+    _validate_numeric_constraints(path, value, schema)
+
+    if isinstance(value, dict):
+        required = schema.get("required")
+        if isinstance(required, list):
+            missing = [key for key in required if isinstance(key, str) and key not in value]
+            if missing:
+                raise N8NBridgeError(
+                    "n8n tool arguments failed schema validation: missing required field(s) at "
+                    f"{path}: " + ", ".join(sorted(missing))
+                )
+
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            if schema.get("additionalProperties") is False:
+                undeclared = sorted(key for key in value if key not in properties)
+                if undeclared:
+                    raise N8NBridgeError(
+                        "n8n tool arguments failed schema validation: undeclared field(s) at "
+                        f"{path}: " + ", ".join(undeclared)
+                    )
+            for key, nested_value in value.items():
+                nested_schema = properties.get(key)
+                if isinstance(nested_schema, dict):
+                    _validate_nested_schema_value(f"{path}.{key}", nested_value, nested_schema)
+                elif isinstance(schema.get("additionalProperties"), dict):
+                    _validate_nested_schema_value(
+                        f"{path}.{key}", nested_value, schema["additionalProperties"]
+                    )
+
+    if isinstance(value, list):
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                _validate_nested_schema_value(f"{path}[{index}]", item, item_schema)
+
+
 def _validate_arguments_against_schema(arguments: dict, schema) -> None:
-    """Fail closed on clear top-level schema mismatches before invoking n8n."""
+    """Fail closed on clear schema mismatches before invoking n8n."""
     if not isinstance(schema, dict):
         return
 
@@ -272,6 +330,7 @@ def _validate_arguments_against_schema(arguments: dict, schema) -> None:
             )
         _validate_size_constraints(key, value, prop)
         _validate_numeric_constraints(key, value, prop)
+        _validate_nested_schema_value(key, value, prop)
 
 
 async def call_tool(name: str, arguments: dict | None = None):
