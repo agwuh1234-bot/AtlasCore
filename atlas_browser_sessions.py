@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,8 @@ class BrowserSessionStore:
     def __init__(self, root: str | None = None, key: str | None = None) -> None:
         self.root = Path(root or os.environ.get("ATLAS_BROWSER_SESSION_DIR", "/data/atlas-browser-sessions"))
         self.root.mkdir(parents=True, exist_ok=True)
+        if self.root.is_symlink():
+            raise BrowserSessionError("Session directory must not be a symlink")
         raw_key = key or os.environ.get("ATLAS_BROWSER_SESSION_KEY", "")
         if not raw_key:
             raise BrowserSessionError("ATLAS_BROWSER_SESSION_KEY is required")
@@ -46,19 +49,46 @@ class BrowserSessionStore:
     def _path(self, name: str) -> Path:
         return self.root / f"{self._safe_name(name)}.state.enc"
 
+    @staticmethod
+    def _reject_symlink(path: Path) -> None:
+        if path.is_symlink():
+            raise BrowserSessionError("Session path must not be a symlink")
+
     def exists(self, name: str) -> bool:
-        return self._path(name).is_file()
+        path = self._path(name)
+        self._reject_symlink(path)
+        return path.is_file()
 
     def save(self, name: str, state: dict[str, Any]) -> None:
         payload = json.dumps(state, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         path = self._path(name)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_bytes(self.cipher.encrypt(payload))
-        os.chmod(tmp, 0o600)
-        tmp.replace(path)
+        self._reject_symlink(path)
+        encrypted = self.cipher.encrypt(payload)
+        fd = -1
+        tmp_path: Path | None = None
+        try:
+            fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=self.root)
+            tmp_path = Path(tmp_name)
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "wb", closefd=True) as handle:
+                fd = -1
+                handle.write(encrypted)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_path, path)
+            tmp_path = None
+        finally:
+            if fd >= 0:
+                os.close(fd)
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink()
+                except FileNotFoundError:
+                    pass
 
     def load(self, name: str) -> dict[str, Any]:
         path = self._path(name)
+        self._reject_symlink(path)
         if not path.is_file():
             raise BrowserSessionError("Session not found")
         try:
@@ -72,10 +102,16 @@ class BrowserSessionStore:
 
     def delete(self, name: str) -> bool:
         path = self._path(name)
+        self._reject_symlink(path)
         if not path.exists():
             return False
         path.unlink()
         return True
 
     def list_names(self) -> list[str]:
-        return sorted(p.name.removesuffix(".state.enc") for p in self.root.glob("*.state.enc"))
+        names: list[str] = []
+        for path in self.root.glob("*.state.enc"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            names.append(path.name.removesuffix(".state.enc"))
+        return sorted(names)
