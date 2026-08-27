@@ -25,8 +25,17 @@ class DashboardLiveBootstrapTests(unittest.TestCase):
             "AtlasToolsCenter",
             "AtlasShare",
             "AtlasRightPanel",
+            "AtlasProjectSearch",
+            "AtlasUIActions",
         ):
             self.assertIn(name, source)
+
+    def test_header_search_and_more_button_call_live_controllers_directly(self):
+        source = (ROOT / "web" / "dashboard.js").read_text(encoding="utf-8")
+        self.assertIn("window.AtlasProjectSearch.open", source)
+        self.assertIn("window.AtlasUIActions?.openQuickMenu?.()", source)
+        self.assertIn("window.AtlasShare?.open?.()", source)
+        self.assertIn("window.AtlasRightPanel?.toggle?.()", source)
 
     def test_quick_commands_distinguish_immediate_and_input_required_actions(self):
         source = (ROOT / "web" / "workspace-control.js").read_text(encoding="utf-8")
