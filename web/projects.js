@@ -97,7 +97,20 @@
   }
 
   function showError(message) {
-    window.alert(message || 'Не удалось выполнить действие.');
+    const text = message || 'Не удалось выполнить действие.';
+    if (window.AtlasNotice?.error) {
+      window.AtlasNotice.error(text, { title: 'Не удалось выполнить' });
+      return;
+    }
+    window.alert(text);
+  }
+
+  function showSuccess(message) {
+    if (window.AtlasNotice?.success) {
+      window.AtlasNotice.success(message);
+      return;
+    }
+    window.alert(message);
   }
 
   async function askText(options, fallbackMessage, fallbackValue = '') {
@@ -230,7 +243,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'note', content: content.trim() }),
       });
-      window.alert('Сохранено в памяти проекта.');
+      showSuccess('Сохранено в памяти проекта.');
     } catch (error) {
       showError(error.message);
     }
