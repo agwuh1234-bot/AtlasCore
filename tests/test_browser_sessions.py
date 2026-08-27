@@ -140,6 +140,36 @@ class BrowserSessionStoreTests(unittest.TestCase):
             os.link(target, Path(root) / "linked.state.enc")
             self.assertEqual(store.list_names(), ["safe"])
 
+    def test_save_rejects_oversized_plaintext_before_writing(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            store._MAX_PLAINTEXT_BYTES = 64
+            with self.assertRaisesRegex(BrowserSessionError, "too large"):
+                store.save("shopify", {"cookies": [], "blob": "x" * 128})
+            self.assertFalse(store._path("shopify").exists())
+
+    def test_load_rejects_oversized_encrypted_file_before_reading(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            store._MAX_ENCRYPTED_BYTES = 32
+            path = store._path("shopify")
+            path.write_bytes(b"x" * 33)
+            with mock.patch("atlas_browser_sessions.os.fdopen") as fdopen:
+                with self.assertRaisesRegex(BrowserSessionError, "too large"):
+                    store.load("shopify")
+            fdopen.assert_not_called()
+
+    def test_load_rejects_decrypted_payload_over_plaintext_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            payload = b'{"blob":"' + (b"x" * 128) + b'"}'
+            encrypted = store.cipher.encrypt(payload)
+            store._path("shopify").write_bytes(encrypted)
+            store._MAX_PLAINTEXT_BYTES = 64
+            store._MAX_ENCRYPTED_BYTES = len(encrypted) + 1
+            with self.assertRaisesRegex(BrowserSessionError, "too large"):
+                store.load("shopify")
+
 
 if __name__ == "__main__":
     unittest.main()
