@@ -37,6 +37,15 @@ class N8NGraphSafetyTests(unittest.TestCase):
             ["duplicate_physical_connection:A->B", "duplicate_physical_connection:X->Y"],
         )
 
+    def test_shape_validator_blocks_duplicate_workflow_node_names(self):
+        body = body_with_edges(("A", "B"))
+        body["nodes"] = [
+            {"name": "A", "type": "n8n-nodes-base.manualTrigger"},
+            {"name": "B", "type": "n8n-nodes-base.noOp"},
+            {"name": "B", "type": "n8n-nodes-base.set"},
+        ]
+        self.assertEqual(connection_shape_issues(body), ["duplicate_workflow_node_name:B"])
+
     def test_shape_validator_blocks_nonzero_target_input_index(self):
         body = {"connections": {"A": {"main": [[{"node": "B", "type": "main", "index": 1}]]}}}
         self.assertEqual(connection_shape_issues(body), ["unsupported_connection_edge_index:A:1"])
