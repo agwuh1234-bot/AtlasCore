@@ -15,10 +15,12 @@ class ControlIconTests(unittest.TestCase):
 
     def test_composer_controls_keep_existing_ids_and_gain_svg_icons(self):
         source = (ROOT / "web" / "control-icons.js").read_text(encoding="utf-8")
-        for control_id in ('attachBtn', 'voiceBtn', 'writeModeBtn', 'claudeReviewBtn', 'stopBtn', 'sendBtn'):
+        for control_id in ('toolTrayBtn', 'attachBtn', 'voiceBtn', 'writeModeBtn', 'claudeReviewBtn', 'stopBtn', 'sendBtn'):
             self.assertIn(f"getElementById('{control_id}')", source)
-        for icon in ('plus', 'mic', 'pen', 'spark', 'stop', 'send'):
+        for icon in ('plus', 'clip', 'mic', 'pen', 'spark', 'stop', 'send'):
             self.assertIn(f"'{icon}'", source)
+        self.assertIn("setIcon(document.getElementById('toolTrayBtn'),'plus'", source)
+        self.assertIn("setIcon(document.getElementById('attachBtn'),'clip'", source)
         self.assertIn('data-atlas-control-icon', source)
         self.assertIn("replaceChildren(svg(name))", source)
 
@@ -32,10 +34,18 @@ class ControlIconTests(unittest.TestCase):
 
     def test_active_modes_have_visible_icon_state(self):
         css = (ROOT / "web" / "control-icons.css").read_text(encoding="utf-8")
+        self.assertIn('#toolTrayBtn.active', css)
         self.assertIn('#writeModeBtn.active', css)
         self.assertIn('#claudeReviewBtn.active', css)
         self.assertIn('#voiceBtn.active', css)
         self.assertIn('#sendBtn:not(:disabled):active', css)
+
+    def test_mobile_composer_keeps_input_as_widest_column(self):
+        css = (ROOT / "web" / "control-icons.css").read_text(encoding="utf-8")
+        self.assertIn('grid-template-columns:42px minmax(0,1fr) 40px 46px', css)
+        self.assertIn('grid-template-columns:38px minmax(0,1fr) 36px 42px', css)
+        self.assertIn('#messageInput{grid-column:2', css)
+        self.assertIn('#voiceBtn{grid-column:3', css)
 
 
 if __name__ == '__main__':
