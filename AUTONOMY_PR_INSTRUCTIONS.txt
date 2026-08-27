@@ -1,0 +1,5 @@
+HEAD=atlas/autonomy-lifecycle
+BASE=main
+TITLE_FILE=AUTONOMY_PR_TITLE.txt
+BODY_FILE=AUTONOMY_PR_BODY.md
+MERGE_BEFORE_CI=false

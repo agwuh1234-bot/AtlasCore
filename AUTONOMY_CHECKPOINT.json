@@ -1,0 +1,18 @@
+{
+  "stage": "lifecycle-integration-gated",
+  "branch": "atlas/autonomy-lifecycle",
+  "components": [
+    "dependency-aware engine",
+    "bounded retries",
+    "PostgreSQL checkpoints",
+    "restart recovery",
+    "browser worker",
+    "verify worker",
+    "approval worker",
+    "runtime bootstrap",
+    "runtime health",
+    "guarded main.py patch",
+    "CI rollout gates"
+  ],
+  "next": "open PR and run CI before applying lifecycle wiring to main"
+}
