@@ -38,7 +38,9 @@ class CommandCenterControlsTests(unittest.TestCase):
         for label in ("Сводка проекта", "Улучшить текст", "Создать план", "Найти решения"):
             self.assertIn(label, source)
         self.assertIn(".dash-check", source)
-        self.assertIn("Смотреть план", source)
+        self.assertIn(".dash-link", source)
+        self.assertIn("смотреть план", source.lower())
+        self.assertIn("Покажи актуальный план текущего проекта", source)
         self.assertIn("requestSubmit", source)
 
 
