@@ -2,7 +2,7 @@
 const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
 const VIEW='atlas_dashboard_view';
 const TAB_LABEL={projects:'Проекты',files:'Файлы',plugins:'Интеграции',actions:'Шаблоны',auto:'Инструменты'};
-let appObserver=null;
+let appObserver=null,sidebarOpenState=null;
 function labelOf(b){return b?.querySelector('span:last-child')?.textContent?.trim()||b?.textContent?.trim()||''}
 function storedTab(){try{return localStorage.getItem('atlas_active_tab')||''}catch(_){return''}}
 function storedView(){try{return localStorage.getItem(VIEW)==='chat'?'chat':'home'}catch(_){return'home'}}
@@ -11,7 +11,7 @@ function tabButton(name){return $$('[data-tab]').find(x=>String(x.dataset.tab||'
 function tapTab(name){tabButton(name)?.click()}
 function setActive(label){const nav=$('#atlasRefNav');if(!nav||!label)return;$$('.ref-nav-item',nav).forEach(b=>{const on=labelOf(b)===label;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')})}
 function setFocusChat(on){document.body.classList.toggle('atlas-chat-focus',!!on);saveView(on?'chat':'home')}
-function syncSidebarToggle(){const t=$('#atlasSidebarToggle');if(!t)return;const open=document.body.classList.contains('atlas-sidebar-open');t.setAttribute('aria-expanded',String(open));t.setAttribute('aria-label',open?'Скрыть меню':'Открыть меню')}
+function syncSidebarToggle(){const t=$('#atlasSidebarToggle');if(!t)return;const open=document.body.classList.contains('atlas-sidebar-open'),changed=sidebarOpenState!==open;sidebarOpenState=open;t.setAttribute('aria-expanded',String(open));t.setAttribute('aria-label',open?'Скрыть меню':'Открыть меню');if(changed&&open&&innerWidth<980&&document.activeElement===t)setTimeout(()=>$('#atlasRefNav .ref-nav-item')?.focus(),0)}
 function collapseSidebar(){if(innerWidth>=980)return;document.body.classList.remove('atlas-sidebar-open');try{localStorage.setItem('atlas_sidebar_open','0')}catch(_){}syncSidebarToggle()}
 function closeCenters(){window.AtlasTemplates?.close?.();window.AtlasToolsCenter?.close?.();window.AtlasIntegrations?.close?.();window.AtlasSettingsCenter?.close?.();const settingsCard=$('#settingsCard');if(settingsCard&&!settingsCard.classList.contains('hidden'))settingsCard.classList.add('hidden')}
 function home(){collapseSidebar();closeCenters();setFocusChat(false);tapTab('chat');setActive('Главная');window.AtlasHomeSummary?.refresh?.();setTimeout(()=>$('#chatList')?.scrollTo?.({top:0,behavior:'smooth'}),30)}
