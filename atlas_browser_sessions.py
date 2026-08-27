@@ -81,8 +81,6 @@ class BrowserSessionStore:
     @classmethod
     def _safe_name(cls, name: str) -> str:
         normalized = name.lower().strip()
-        # Reject rather than silently rewriting input. This prevents two different
-        # caller-provided names (or traversal-like strings) from aliasing one file.
         if not cls._NAME_RE.fullmatch(normalized):
             raise BrowserSessionError("Invalid session name")
         return normalized
@@ -100,21 +98,33 @@ class BrowserSessionStore:
             return
         if not stat.S_ISREG(info.st_mode):
             raise BrowserSessionError("Session path must be a regular file")
-        # A hardlink can alias an inode outside the session directory. In particular,
-        # load() repairs permissions with chmod(), which must never affect an external
-        # file. Session files are therefore required to have exactly one link.
         if info.st_nlink != 1:
             raise BrowserSessionError("Session path must not be hardlinked")
 
-    def _open_session_for_read(self, path: Path) -> int:
-        """Open a session without following a last-moment symlink swap.
+    @staticmethod
+    def _safe_regular_file_exists(path: Path) -> bool:
+        """Check existence on the exact inode without following a swapped symlink."""
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        if not nofollow:
+            raise BrowserSessionError("Secure session existence checks are unavailable on this platform")
+        try:
+            fd = os.open(path, os.O_RDONLY | nofollow)
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            raise BrowserSessionError("Session path cannot be opened safely") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise BrowserSessionError("Session path must be a regular file")
+            if info.st_nlink != 1:
+                raise BrowserSessionError("Session path must not be hardlinked")
+            return True
+        finally:
+            os.close(fd)
 
-        The lstat checks used elsewhere are useful for validation, but load() handles
-        authentication material and must avoid a check-then-open race. O_NOFOLLOW
-        binds the validation to the file descriptor actually read; fstat then repeats
-        the regular-file/hardlink checks on that exact inode. Instance limits are
-        intentionally honored so configured/test limits are enforced before any read.
-        """
+    def _open_session_for_read(self, path: Path) -> int:
+        """Open a session without following a last-moment symlink swap."""
         flags = os.O_RDONLY
         nofollow = getattr(os, "O_NOFOLLOW", 0)
         if not nofollow:
@@ -140,9 +150,7 @@ class BrowserSessionStore:
             raise
 
     def exists(self, name: str) -> bool:
-        path = self._path(name)
-        self._reject_unsafe_existing_file(path)
-        return path.is_file()
+        return self._safe_regular_file_exists(self._path(name))
 
     def save(self, name: str, state: dict[str, Any]) -> None:
         payload = json.dumps(state, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -164,13 +172,8 @@ class BrowserSessionStore:
                 handle.write(encrypted)
                 handle.flush()
                 os.fsync(handle.fileno())
-            # The temporary inode is already mode 0600 before it becomes reachable at
-            # the final name. Avoid chmod(path) after replace: a path-based chmod here
-            # would reopen a symlink-swap race after the atomic replacement.
             os.replace(tmp_path, path)
             tmp_path = None
-            # fsync(file) persists the encrypted bytes; fsync(directory) persists the
-            # rename itself, so a host crash cannot silently roll back the session name.
             self._fsync_root_directory()
         finally:
             if fd >= 0:
@@ -207,19 +210,18 @@ class BrowserSessionStore:
         if not path.exists():
             return False
         path.unlink()
-        # The encrypted state contains reusable authentication material. Persist the
-        # directory-entry removal so a host crash cannot resurrect a deleted session.
         self._fsync_root_directory()
         return True
 
     def list_names(self) -> list[str]:
         names: list[str] = []
         for path in self.root.glob("*.state.enc"):
+            name = path.name.removesuffix(".state.enc")
             try:
-                self._reject_unsafe_existing_file(path)
+                if not self._safe_regular_file_exists(path):
+                    continue
+                self._safe_name(name)
             except BrowserSessionError:
                 continue
-            if not path.is_file():
-                continue
-            names.append(path.name.removesuffix(".state.enc"))
+            names.append(name)
         return sorted(names)
