@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class PwaRuntimeRefreshTests(unittest.TestCase):
     def test_service_worker_is_fresh_and_never_mutates_job_permissions(self):
         source = (ROOT / "web" / "sw.js").read_text(encoding="utf-8")
-        self.assertIn("atlas-app-v21-20260827", source)
+        self.assertIn("atlas-app-v22-20260827", source)
         self.assertIn("cache: 'no-store'", source)
         self.assertIn("pathname === '/health'", source)
         self.assertIn("pathname.startsWith('/app-')", source)
