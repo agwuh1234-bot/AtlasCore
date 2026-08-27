@@ -21,6 +21,17 @@ class BrowserExecutorSafetyTests(unittest.TestCase):
             BrowserExecutor._validate_public_url("https://example.invalid")
 
     @patch("atlas_browser_executor.socket.getaddrinfo")
+    def test_rejects_embedded_url_credentials(self, getaddrinfo):
+        getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        for url in (
+            "https://user@example.com/private",
+            "https://user:password@example.com/private",
+        ):
+            with self.assertRaises(BrowserExecutorError):
+                BrowserExecutor._validate_public_url(url)
+        getaddrinfo.assert_not_called()
+
+    @patch("atlas_browser_executor.socket.getaddrinfo")
     def test_accepts_public_resolved_address(self, getaddrinfo):
         getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
         self.assertEqual(
