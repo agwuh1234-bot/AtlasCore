@@ -47,6 +47,9 @@ _PLAINTEXT_CREDENTIAL_RE = re.compile(
 _URL_USERINFO_RE = re.compile(
     r"(?i)\b([a-z][a-z0-9+.-]*://)([^/@\s:]+):([^/@\s]+)@"
 )
+_WEBHOOK_CREDENTIAL_URL_RE = re.compile(
+    r"(?i)\b(https://(?:hooks\.slack\.com/services|(?:discord(?:app)?\.com)/api/webhooks)/)([^\s?#]+)"
+)
 _JWT_LIKE_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:eyJ[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})\.(?:[A-Za-z0-9_-]{6,})(?![A-Za-z0-9_-])"
 )
@@ -102,6 +105,7 @@ def _sanitize_string(value: str) -> str:
     redacted = _SIGNED_URL_SIGNATURE_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _PLAINTEXT_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}<redacted>@", redacted)
+    redacted = _WEBHOOK_CREDENTIAL_URL_RE.sub(lambda match: f"{match.group(1)}<redacted-webhook>", redacted)
     redacted = _JWT_LIKE_RE.sub("<redacted-jwt>", redacted)
     redacted = _TELEGRAM_BOT_TOKEN_RE.sub("<redacted-telegram-token>", redacted)
     redacted = _KNOWN_PROVIDER_SECRET_RE.sub("<redacted-secret>", redacted)
