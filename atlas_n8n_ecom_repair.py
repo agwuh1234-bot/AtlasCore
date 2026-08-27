@@ -118,24 +118,31 @@ def _duplicate_reviewed_edges(body: dict[str, Any]) -> list[str]:
 
 
 def _dangling_connection_issues(body: dict[str, Any]) -> list[str]:
-    """Return structural connection issues anywhere in the workflow graph.
+    """Return structural workflow issues anywhere in the graph.
 
-    Repairs are intentionally blocked even when a malformed edge sits outside the
-    manual-trigger path. Writing into a structurally inconsistent workflow makes
-    the outcome harder to reason about and could hide future activation hazards.
+    Repairs are intentionally blocked even when malformed nodes or edges sit
+    outside the manual-trigger path. Writing into a structurally inconsistent
+    workflow makes the outcome harder to reason about and could hide future
+    activation hazards.
     """
     nodes = body.get("nodes")
     connections = body.get("connections")
     if not isinstance(nodes, list) or not isinstance(connections, dict):
         return ["malformed_workflow_graph"]
 
-    node_names = [
-        str(node.get("name"))
-        for node in nodes
-        if isinstance(node, dict) and isinstance(node.get("name"), str) and node.get("name")
-    ]
-    known_names = set(node_names)
     issues: list[str] = []
+    node_names: list[str] = []
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            issues.append(f"malformed_workflow_node:{index}")
+            continue
+        name = node.get("name")
+        if not isinstance(name, str) or not name:
+            issues.append(f"malformed_workflow_node_name:{index}")
+            continue
+        node_names.append(name)
+
+    known_names = set(node_names)
 
     name_counts: dict[str, int] = {}
     for name in node_names:
