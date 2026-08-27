@@ -26,6 +26,8 @@ class BrowserSessionStore:
     """
 
     _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
+    _MAX_PLAINTEXT_BYTES = 8 * 1024 * 1024
+    _MAX_ENCRYPTED_BYTES = 12 * 1024 * 1024
 
     def __init__(self, root: str | None = None, key: str | None = None) -> None:
         self.root = Path(root or os.environ.get("ATLAS_BROWSER_SESSION_DIR", "/data/atlas-browser-sessions"))
@@ -84,8 +86,8 @@ class BrowserSessionStore:
         if info.st_nlink != 1:
             raise BrowserSessionError("Session path must not be hardlinked")
 
-    @staticmethod
-    def _open_session_for_read(path: Path) -> int:
+    @classmethod
+    def _open_session_for_read(cls, path: Path) -> int:
         """Open a session without following a last-moment symlink swap.
 
         The lstat checks used elsewhere are useful for validation, but load() handles
@@ -109,6 +111,8 @@ class BrowserSessionStore:
                 raise BrowserSessionError("Session path must be a regular file")
             if info.st_nlink != 1:
                 raise BrowserSessionError("Session path must not be hardlinked")
+            if info.st_size > cls._MAX_ENCRYPTED_BYTES:
+                raise BrowserSessionError("Session state is too large")
             os.fchmod(fd, 0o600)
             return fd
         except Exception:
@@ -122,9 +126,13 @@ class BrowserSessionStore:
 
     def save(self, name: str, state: dict[str, Any]) -> None:
         payload = json.dumps(state, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        if len(payload) > self._MAX_PLAINTEXT_BYTES:
+            raise BrowserSessionError("Session state is too large")
         path = self._path(name)
         self._reject_unsafe_existing_file(path)
         encrypted = self.cipher.encrypt(payload)
+        if len(encrypted) > self._MAX_ENCRYPTED_BYTES:
+            raise BrowserSessionError("Encrypted session state is too large")
         fd = -1
         tmp_path: Path | None = None
         try:
@@ -158,6 +166,8 @@ class BrowserSessionStore:
                 fd = -1
                 encrypted = handle.read()
             raw = self.cipher.decrypt(encrypted)
+            if len(raw) > self._MAX_PLAINTEXT_BYTES:
+                raise BrowserSessionError("Session state is too large")
             value = json.loads(raw.decode("utf-8"))
         except (InvalidToken, ValueError, json.JSONDecodeError) as exc:
             raise BrowserSessionError("Session state is invalid or cannot be decrypted") from exc
