@@ -49,6 +49,14 @@ class NavStateModeTests(unittest.TestCase):
         self.assertIn("classList.contains('atlas-sidebar-open')", source)
         self.assertIn("collapseSidebar()", source)
 
+    def test_sidebar_toggle_accessibility_state_tracks_open_class(self):
+        source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
+        self.assertIn("function syncSidebarToggle()", source)
+        self.assertIn("setAttribute('aria-expanded',String(open))", source)
+        self.assertIn("open?'Скрыть меню':'Открыть меню'", source)
+        self.assertIn("function bindSidebarObserver()", source)
+        self.assertIn("attributeFilter:['class']", source)
+
     def test_focus_chat_css_removes_dashboard_noise(self):
         css = (ROOT / "web" / "nav-state.css").read_text(encoding="utf-8")
         self.assertIn("body.atlas-chat-focus .atlas-dashboard-right", css)
