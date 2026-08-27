@@ -41,7 +41,7 @@ class RepairShapeGateTests(unittest.TestCase):
         plan = plan_safe_ecom_repair(body)
         self.assertFalse(plan["ok"])
         self.assertEqual(plan["operations"], [])
-        self.assertIn("malformed_nodes", plan["remaining_issues"])
+        self.assertIn("malformed_workflow_body", plan["remaining_issues"])
 
 
 if __name__ == "__main__":
