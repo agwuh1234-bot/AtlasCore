@@ -4,9 +4,9 @@ const VIEW='atlas_dashboard_view';
 const TAB_LABEL={projects:'Проекты',files:'Файлы',plugins:'Интеграции',actions:'Шаблоны',auto:'Инструменты'};
 let appObserver=null;
 function labelOf(b){return b?.querySelector('span:last-child')?.textContent?.trim()||b?.textContent?.trim()||''}
-function storedTab(){try{return localStorage.getItem('atlas_active_tab')||''}catch{return''}}
-function storedView(){try{return localStorage.getItem(VIEW)==='chat'?'chat':'home'}catch{return'home'}}
-function saveView(v){try{localStorage.setItem(VIEW,v)}catch{}}
+function storedTab(){try{return localStorage.getItem('atlas_active_tab')||''}catch(_){return''}}
+function storedView(){try{return localStorage.getItem(VIEW)==='chat'?'chat':'home'}catch(_){return'home'}}
+function saveView(v){try{localStorage.setItem(VIEW,v)}catch(_){}}
 function tabButton(name){return $$('[data-tab]').find(x=>String(x.dataset.tab||'').toLowerCase()===name)}
 function tapTab(name){tabButton(name)?.click()}
 function setActive(label){const nav=$('#atlasRefNav');if(!nav||!label)return;$$('.ref-nav-item',nav).forEach(b=>{const on=labelOf(b)===label;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')})}
