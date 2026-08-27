@@ -119,13 +119,26 @@ class N8NExecutorGatewayTests(unittest.TestCase):
         self.assertEqual(payload["content"][0]["value"]["password"], "[REDACTED]")
         self.assertEqual(payload["content"][0]["value"]["value"], 7)
 
+    def test_result_payload_redacts_secrets_in_unstructured_text(self):
+        secret = "sk-" + ("a" * 24)
+        result = SimpleNamespace(
+            isError=False,
+            structuredContent=None,
+            content=[SimpleNamespace(text=f"provider failed with key {secret} and Authorization: Bearer abcdefghijkl")],
+        )
+        payload = atlas_n8n_executor._result_payload(result)
+        text = payload["content"][0]["text"]
+        self.assertNotIn(secret, text)
+        self.assertNotIn("abcdefghijkl", text)
+        self.assertIn("<redacted", text.lower())
+
     def test_result_payload_bounds_unstructured_text(self):
         long_text = "x" * (atlas_n8n_executor._MAX_TEXT_RESULT + 100)
         result = SimpleNamespace(isError=False, structuredContent=None, content=[SimpleNamespace(text=long_text)])
         payload = atlas_n8n_executor._result_payload(result)
         text = payload["content"][0]["text"]
-        self.assertTrue(text.endswith("...[TRUNCATED]"))
         self.assertLess(len(text), len(long_text))
+        self.assertTrue(text.endswith("…<truncated>") or text.endswith("...[TRUNCATED]"))
 
 
 if __name__ == "__main__":
