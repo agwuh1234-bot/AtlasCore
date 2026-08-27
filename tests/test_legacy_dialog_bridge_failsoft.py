@@ -19,6 +19,14 @@ class LegacyDialogBridgeFailSoftTests(unittest.TestCase):
         self.assertIn("window.confirm=original;clearBypass(button)", source)
         self.assertIn("window.prompt=original;clearBypass(button)", source)
 
+    def test_duplicate_taps_are_guarded_while_dialog_is_pending(self):
+        source = (ROOT / "web" / "legacy-dialog-bridge.js").read_text(encoding="utf-8")
+        self.assertIn("const PENDING=new WeakSet()", source)
+        self.assertIn("if(PENDING.has(button))return false", source)
+        self.assertIn("PENDING.add(button)", source)
+        self.assertIn("finally{PENDING.delete(button)}", source)
+        self.assertIn("void guardedHandle(button)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
