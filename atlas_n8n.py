@@ -155,6 +155,17 @@ def _matches_schema_type(value, expected: str) -> bool:
     return True
 
 
+def _matches_declared_type(value, expected) -> bool:
+    if isinstance(expected, str):
+        return _matches_schema_type(value, expected)
+    if isinstance(expected, list):
+        declared = [item for item in expected if isinstance(item, str)]
+        if not declared:
+            return False
+        return any(_matches_schema_type(value, item) for item in declared)
+    return True
+
+
 def _validate_size_constraints(key: str, value, prop: dict) -> None:
     if isinstance(value, str):
         min_length = prop.get("minLength")
@@ -243,9 +254,16 @@ def _validate_arguments_against_schema(arguments: dict, schema) -> None:
         if not isinstance(prop, dict):
             continue
         expected = prop.get("type")
-        if isinstance(expected, str) and not _matches_schema_type(value, expected):
+        if isinstance(expected, (str, list)) and not _matches_declared_type(value, expected):
+            expected_label = expected if isinstance(expected, str) else " or ".join(
+                item for item in expected if isinstance(item, str)
+            )
             raise N8NBridgeError(
-                f"n8n tool arguments failed schema validation: {key} must be {expected}"
+                f"n8n tool arguments failed schema validation: {key} must be {expected_label or 'a declared type'}"
+            )
+        if "const" in prop and value != prop.get("const"):
+            raise N8NBridgeError(
+                f"n8n tool arguments failed schema validation: {key} does not match const"
             )
         allowed_values = prop.get("enum")
         if isinstance(allowed_values, list) and value not in allowed_values:
