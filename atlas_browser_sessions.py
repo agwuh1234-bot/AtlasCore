@@ -190,7 +190,9 @@ class BrowserSessionStore:
         try:
             with os.fdopen(fd, "rb", closefd=True) as handle:
                 fd = -1
-                encrypted = handle.read()
+                encrypted = handle.read(self._MAX_ENCRYPTED_BYTES + 1)
+            if len(encrypted) > self._MAX_ENCRYPTED_BYTES:
+                raise BrowserSessionError("Session state is too large")
             raw = self.cipher.decrypt(encrypted)
             if len(raw) > self._MAX_PLAINTEXT_BYTES:
                 raise BrowserSessionError("Session state is too large")
