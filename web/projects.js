@@ -15,20 +15,7 @@
   const rawSet = Storage.prototype.setItem;
   const rawRemove = Storage.prototype.removeItem;
 
-  function deepLinkedProject() {
-    try {
-      const id = new URLSearchParams(window.location.search).get('project') || '';
-      return /^[A-Za-z0-9._:-]{1,120}$/.test(id) ? id : '';
-    } catch {
-      return '';
-    }
-  }
-
-  const requestedProject = deepLinkedProject();
-  let activeProject = requestedProject || rawGet.call(localStorage, ACTIVE_PROJECT) || DEFAULT_PROJECT;
-  if (requestedProject && rawGet.call(localStorage, ACTIVE_PROJECT) !== requestedProject) {
-    rawSet.call(localStorage, ACTIVE_PROJECT, requestedProject);
-  }
+  let activeProject = rawGet.call(localStorage, ACTIVE_PROJECT) || DEFAULT_PROJECT;
 
   const scopedKey = (key) => SCOPED_KEYS.has(String(key))
     ? String(key) + ':' + activeProject
@@ -87,11 +74,11 @@
     try {
       const url = new URL(window.location.href);
       if (url.searchParams.has('project')) {
-        url.searchParams.set('project', id);
-        window.history.replaceState(null, '', url);
+        url.searchParams.delete('project');
+        window.history.replaceState(null, '', url.pathname + (url.search || '') + (url.hash || ''));
       }
     } catch {
-      // URL state is optional; project persistence is the source of truth.
+      // URL cleanup is optional; project persistence is the source of truth.
     }
     window.location.reload();
   }
