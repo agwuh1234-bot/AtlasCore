@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 import socket
+import stat
 import time
 import uuid
 from dataclasses import asdict, dataclass
@@ -49,11 +50,31 @@ class BrowserExecutor:
     def __init__(self, artifact_dir: str | None = None, session_store: BrowserSessionStore | None = None) -> None:
         self.artifact_dir = Path(artifact_dir or os.environ.get("ATLAS_BROWSER_ARTIFACT_DIR", "/tmp/atlas-browser"))
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
+        self._secure_artifact_directory(self.artifact_dir)
         self.timeout_ms = int(os.environ.get("ATLAS_BROWSER_TIMEOUT_MS", "30000"))
         self.max_actions = int(os.environ.get("ATLAS_BROWSER_MAX_ACTIONS", "40"))
         self.session_store = session_store
         if self.session_store is None and os.environ.get("ATLAS_BROWSER_SESSION_KEY"):
             self.session_store = BrowserSessionStore()
+
+    @staticmethod
+    def _secure_artifact_directory(path: Path) -> None:
+        """Restrict browser artifacts to the Atlas process owner without following symlinks."""
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory = getattr(os, "O_DIRECTORY", 0)
+        if not nofollow or not directory:
+            raise BrowserExecutorError("Secure browser artifact directory validation is unavailable on this platform")
+        try:
+            fd = os.open(path, os.O_RDONLY | nofollow | directory)
+        except OSError as exc:
+            raise BrowserExecutorError("Browser artifact directory cannot be opened safely") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode):
+                raise BrowserExecutorError("Browser artifact directory is invalid")
+            os.fchmod(fd, 0o700)
+        finally:
+            os.close(fd)
 
     @staticmethod
     def _validate_public_url(url: str) -> str:
@@ -117,6 +138,7 @@ class BrowserExecutor:
         job_id = uuid.uuid4().hex
         job_dir = self.artifact_dir / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
+        self._secure_artifact_directory(job_dir)
         log: list[dict[str, Any]] = []
         artifacts: list[BrowserArtifact] = []
 
