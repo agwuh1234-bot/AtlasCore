@@ -19,12 +19,17 @@ class ShareProfileRightPanelTests(unittest.TestCase):
         self.assertNotIn('password', source.lower())
         self.assertNotIn('token=', source.lower())
 
-    def test_projects_accept_only_sanitized_share_deep_links(self):
-        source = (ROOT / 'web' / 'projects.js').read_text(encoding='utf-8')
-        self.assertIn('function deepLinkedProject()', source)
-        self.assertIn("new URLSearchParams(window.location.search).get('project')", source)
-        self.assertIn('/^[A-Za-z0-9._:-]{1,120}$/.test(id)', source)
-        self.assertIn("rawSet.call(localStorage, ACTIVE_PROJECT, requestedProject)", source)
+    def test_projects_require_validated_share_deep_links(self):
+        base = (ROOT / 'web' / 'projects.js').read_text(encoding='utf-8')
+        switcher = (ROOT / 'web' / 'project-switcher-live.js').read_text(encoding='utf-8')
+        self.assertNotIn('function deepLinkedProject()', base)
+        self.assertNotIn("new URLSearchParams(window.location.search).get('project')", base)
+        self.assertIn("rawGet.call(localStorage, ACTIVE_PROJECT) || DEFAULT_PROJECT", base)
+        self.assertIn("PROJECT_PARAM='project'", switcher)
+        self.assertIn("const data=await json('/app-projects')", switcher)
+        self.assertIn("list.find(p=>idOf(p)===target)", switcher)
+        self.assertIn("if(!match)", switcher)
+        self.assertIn("if(e?.status===401)return false", switcher)
 
     def test_right_panel_unifies_desktop_and_tablet_states(self):
         source = (ROOT / 'web' / 'right-panel-control.js').read_text(encoding='utf-8')
