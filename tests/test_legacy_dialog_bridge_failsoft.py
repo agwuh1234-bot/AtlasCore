@@ -13,6 +13,12 @@ class LegacyDialogBridgeFailSoftTests(unittest.TestCase):
         self.assertIn("try{return await window.AtlasDialog.prompt(options)}catch(_err){}", source)
         self.assertIn("return window.prompt(fallback,value)", source)
 
+    def test_synthetic_clicks_clear_stale_bypass_flags(self):
+        source = (ROOT / "web" / "legacy-dialog-bridge.js").read_text(encoding="utf-8")
+        self.assertIn("function clearBypass(button)", source)
+        self.assertIn("window.confirm=original;clearBypass(button)", source)
+        self.assertIn("window.prompt=original;clearBypass(button)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
