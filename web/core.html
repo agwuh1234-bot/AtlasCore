@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070a">
+<meta name="format-detection" content="telephone=no">
+<title>Atlas</title>
+<link rel="stylesheet" href="/app/core.css?v=20260827-core1">
+</head>
+<body>
+<div class="shell">
+  <aside class="side" aria-label="Навигация Atlas">
+    <div class="logo"><span class="logo-mark">A</span><div><strong>Atlas</strong><small>CORE</small></div></div>
+    <nav class="nav">
+      <button type="button" class="nav-btn active" data-view="home">Главная</button>
+      <button type="button" class="nav-btn" data-view="chat">Чат</button>
+      <button type="button" class="nav-btn" data-view="files">Файлы</button>
+      <button type="button" class="nav-btn" data-view="integrations">Интеграции</button>
+      <button type="button" class="nav-btn" data-view="settings">Настройки</button>
+    </nav>
+    <div class="side-project"><label for="projectSelect">Проект</label><select id="projectSelect"></select></div>
+  </aside>
+
+  <section class="workspace">
+    <header class="topbar">
+      <div><strong id="pageTitle">Главная</strong><div class="health"><span id="healthDot" class="dot"></span><span id="healthText">подключение…</span></div></div>
+      <div class="top-actions">
+        <button id="newChatBtn" type="button" class="ghost">Новый чат</button>
+        <button id="claudeBtn" type="button" class="ghost" aria-pressed="false">Claude: выкл</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section id="view-home" class="view active">
+        <div class="hero"><span class="hero-mark">A</span><div><h1>Atlas</h1><p>Стабильное ядро готово к работе.</p></div></div>
+        <div class="cards">
+          <article class="card"><small>Проект</small><strong id="homeProject">—</strong></article>
+          <article class="card"><small>Сервер</small><strong id="homeHealth">проверяю…</strong></article>
+          <article class="card"><small>Бюджет сегодня</small><strong id="homeBudget">—</strong></article>
+          <article class="card"><small>Claude Review</small><strong id="homeClaude">выключен</strong></article>
+        </div>
+        <button id="homeAskBtn" type="button" class="primary">Открыть чат</button>
+      </section>
+
+      <section id="view-chat" class="view">
+        <div id="chatList" class="chat" aria-live="polite"><div class="empty"><span class="hero-mark">A</span><h2>Чем заняться?</h2><p>Напиши задачу Atlas.</p></div></div>
+      </section>
+
+      <section id="view-files" class="view">
+        <div class="section-head"><div><h2>Файлы</h2><p>Файлы текущего проекта.</p></div><button id="refreshFilesBtn" class="ghost" type="button">Обновить</button></div>
+        <div id="filesList" class="list"><div class="muted">Открой раздел, чтобы загрузить файлы.</div></div>
+      </section>
+
+      <section id="view-integrations" class="view">
+        <div class="section-head"><div><h2>Интеграции</h2><p>Текущий статус подключений Atlas.</p></div><button id="refreshIntegrationsBtn" class="ghost" type="button">Обновить</button></div>
+        <div id="integrationsList" class="list"><div class="muted">Загрузка по запросу.</div></div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <h2>Настройки</h2>
+        <div class="settings-list">
+          <button id="settingsClaudeBtn" type="button" class="setting-row"><span>Claude Review</span><b>выкл</b></button>
+          <button id="developerBtn" type="button" class="setting-row"><span>Developer Mode</span><b>выкл</b></button>
+          <button id="legacyBtn" type="button" class="setting-row"><span>Расширенный интерфейс</span><b>открыть</b></button>
+          <button id="logoutBtn" type="button" class="setting-row danger"><span>Выйти</span><b>→</b></button>
+        </div>
+        <p class="muted settings-note">Опасные действия по-прежнему ограничиваются серверной политикой Atlas.</p>
+      </section>
+    </main>
+
+    <footer id="composerWrap" class="composer-wrap">
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+      <form id="composer" class="composer">
+        <textarea id="messageInput" rows="1" placeholder="Спросите Atlas о чём угодно…" aria-label="Сообщение Atlas"></textarea>
+        <button id="stopBtn" type="button" class="stop hidden" aria-label="Остановить">■</button>
+        <button id="sendBtn" type="submit" class="send" aria-label="Отправить">→</button>
+      </form>
+    </footer>
+  </section>
+</div>
+<nav class="mobile-nav" aria-label="Мобильная навигация">
+  <button type="button" class="mobile-btn active" data-view="home">Главная</button>
+  <button type="button" class="mobile-btn" data-view="chat">Чат</button>
+  <button type="button" class="mobile-btn" data-view="files">Файлы</button>
+  <button type="button" class="mobile-btn" data-view="settings">Ещё</button>
+</nav>
+<script src="/app/core.js?v=20260827-core1" defer></script>
+</body>
+</html>
