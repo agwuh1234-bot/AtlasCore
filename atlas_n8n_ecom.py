@@ -6,6 +6,7 @@ from typing import Any
 
 from atlas_n8n import call_tool, configured
 from atlas_n8n_policy import decision
+from atlas_safe_logging import sanitize_for_log
 
 TARGET_WORKFLOW = "ecomsx222"
 TARGET_WORKFLOW_ID = "0S8720gc3G2OODmG"
@@ -69,10 +70,13 @@ def _safe_params(node: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(params, dict):
         return {}
     node_type = str(node.get("type") or "")
+    safe: dict[str, Any]
     if node_type == "n8n-nodes-base.httpRequest":
-        return {k: params.get(k) for k in ("method", "url", "authentication", "nodeCredentialType", "sendBody") if k in params}
+        safe = {k: params.get(k) for k in ("method", "url", "authentication", "nodeCredentialType", "sendBody") if k in params}
+        return sanitize_for_log(safe)
     if node_type == "n8n-nodes-base.github":
-        return {k: params.get(k) for k in ("resource", "operation", "owner", "repository", "filePath", "commitMessage", "authentication") if k in params}
+        safe = {k: params.get(k) for k in ("resource", "operation", "owner", "repository", "filePath", "commitMessage", "authentication") if k in params}
+        return sanitize_for_log(safe)
     if node_type == "@n8n/n8n-nodes-langchain.anthropic":
         safe = {"modelId": params.get("modelId")}
         messages = params.get("messages")
@@ -82,7 +86,7 @@ def _safe_params(node: dict[str, Any]) -> dict[str, Any]:
         options = params.get("options")
         if isinstance(options, dict):
             safe["option_keys"] = sorted(options.keys())
-        return safe
+        return sanitize_for_log(safe)
     return {}
 
 
@@ -284,23 +288,13 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
             {"type": "setNodeDisabled", "nodeName": "HTTP Request", "disabled": True},
             {"type": "setNodeDisabled", "nodeName": "HTTP Request1", "disabled": True},
             {"type": "setNodeDisabled", "nodeName": "Edit a file", "disabled": True},
-            {"type": "removeConnection", "source": trigger if False else "When clicking ‘Execute workflow’", "target": "HTTP Request", "ignoreErrors": True},
+            {"type": "removeConnection", "source": "When clicking ‘Execute workflow’", "target": "HTTP Request", "ignoreErrors": True},
             {"type": "removeConnection", "source": "HTTP Request", "target": "Message a model1", "ignoreErrors": True},
             {"type": "removeConnection", "source": "Message a model", "target": "Edit a file", "ignoreErrors": True},
         ])
 
-        _add_connection_if_missing(
-            operations,
-            before_body,
-            "When clicking ‘Execute workflow’",
-            SHOPIFY_BRIEF_NODE,
-        )
-        _add_connection_if_missing(
-            operations,
-            before_body,
-            SHOPIFY_BRIEF_NODE,
-            "Message a model1",
-        )
+        _add_connection_if_missing(operations, before_body, "When clicking ‘Execute workflow’", SHOPIFY_BRIEF_NODE)
+        _add_connection_if_missing(operations, before_body, SHOPIFY_BRIEF_NODE, "Message a model1")
 
         result = await call_tool("update_workflow", {"workflowId": TARGET_WORKFLOW_ID, "operations": operations})
         update_result_present = result is not None
@@ -311,20 +305,18 @@ async def maybe_upgrade_ecomsx222_shopify(logger) -> None:
         nodes = _collect_nodes(verify)
         safety = _workflow_safety_summary(verify)
         verified = safety["ready_for_safe_manual_run"]
-        logger.info(
-            "ECOMSX222_SHOPIFY_RESULT %s",
-            json.dumps({
-                "ok": bool(verified),
-                "workflow_id": TARGET_WORKFLOW_ID,
-                "active": body.get("active"),
-                "node_count": len(nodes),
-                "ready_for_safe_manual_run": safety["ready_for_safe_manual_run"],
-                "issues": safety["issues"],
-                "nodes": [{"name": n.get("name"), "type": n.get("type"), "disabled": n.get("disabled")} for n in nodes],
-                "connections": body.get("connections", {}),
-                "update_result_present": update_result_present,
-            }, ensure_ascii=False, default=str)[:20000],
-        )
+        log_payload = sanitize_for_log({
+            "ok": bool(verified),
+            "workflow_id": TARGET_WORKFLOW_ID,
+            "active": body.get("active"),
+            "node_count": len(nodes),
+            "ready_for_safe_manual_run": safety["ready_for_safe_manual_run"],
+            "issues": safety["issues"],
+            "nodes": [{"name": n.get("name"), "type": n.get("type"), "disabled": n.get("disabled")} for n in nodes],
+            "connections": body.get("connections", {}),
+            "update_result_present": update_result_present,
+        })
+        logger.info("ECOMSX222_SHOPIFY_RESULT %s", json.dumps(log_payload, ensure_ascii=False, default=str)[:20000])
     except Exception as exc:
         logger.exception("ECOMSX222_SHOPIFY_RESULT ok=false error=%s", type(exc).__name__)
 
@@ -343,7 +335,8 @@ async def maybe_inspect_ecomsx222(logger) -> None:
         search_payload = _payload(search)
         workflow = _find_workflow(search_payload, TARGET_WORKFLOW)
         if not workflow:
-            logger.warning("ECOMSX222_INSPECT_RESULT ok=false error=workflow_not_found query=%s payload=%s", TARGET_WORKFLOW, json.dumps(search_payload, ensure_ascii=False, default=str)[:2500])
+            safe_search_payload = sanitize_for_log(search_payload)
+            logger.warning("ECOMSX222_INSPECT_RESULT ok=false error=workflow_not_found query=%s payload=%s", TARGET_WORKFLOW, json.dumps(safe_search_payload, ensure_ascii=False, default=str)[:2500])
             return
 
         workflow_id = workflow.get("id") or workflow.get("workflowId")
@@ -352,7 +345,7 @@ async def maybe_inspect_ecomsx222(logger) -> None:
         body = _find_workflow_body(details_payload) or {}
         nodes = _collect_nodes(details_payload)
         safety = _workflow_safety_summary(details_payload)
-        summary = {
+        summary = sanitize_for_log({
             "ok": True,
             "workflow_id": workflow_id,
             "name": workflow.get("name") or TARGET_WORKFLOW,
@@ -362,7 +355,7 @@ async def maybe_inspect_ecomsx222(logger) -> None:
             "issues": safety["issues"],
             "nodes": nodes,
             "connections": body.get("connections", {}),
-        }
+        })
         logger.info("ECOMSX222_INSPECT_RESULT %s", json.dumps(summary, ensure_ascii=False, default=str)[:30000])
     except Exception as exc:
         logger.exception("ECOMSX222_INSPECT_RESULT ok=false error=%s", type(exc).__name__)
