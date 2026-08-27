@@ -1,7 +1,9 @@
 """Safety policy for Atlas n8n MCP calls.
 
 The policy is intentionally conservative: unknown tools are treated as writes.
-Destructive tools require a separate opt-in from ordinary writes.
+Destructive tools require a separate opt-in from ordinary writes. Generic write
+surfaces may also be declared with a stricter destructive intent when the
+specific operation mutates topology or removes data.
 """
 
 import os
@@ -40,15 +42,27 @@ def classify_tool(name: str) -> str:
 def decision(name: str, declared_intent: str) -> tuple[bool, str]:
     actual = classify_tool(name)
     intent = (declared_intent or "").strip().lower()
-    if intent not in {"read", "write"}:
+    if intent not in {"read", "write", "destructive"}:
         return False, "invalid_intent"
+
     if actual == "read":
         return (intent == "read", "ok" if intent == "read" else "intent_mismatch")
-    if intent != "write":
+
+    if intent == "read":
         return False, "intent_mismatch"
+
+    # A caller may deliberately raise a generic write tool such as
+    # update_workflow to destructive intent when its operation set removes
+    # connections, disables resources, or otherwise carries destructive risk.
+    if intent == "destructive":
+        enabled = _flag("N8N_DESTRUCTIVE_ENABLED")
+        return enabled, "ok" if enabled else "destructive_disabled"
+
+    # Explicitly destructive tool names are never downgraded to ordinary write.
     if actual == "destructive":
         enabled = _flag("N8N_DESTRUCTIVE_ENABLED")
         return enabled, "ok" if enabled else "destructive_disabled"
+
     enabled = _flag("N8N_WRITES_ENABLED")
     return enabled, "ok" if enabled else "writes_disabled"
 
