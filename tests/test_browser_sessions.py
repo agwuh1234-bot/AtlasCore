@@ -83,6 +83,35 @@ class BrowserSessionStoreTests(unittest.TestCase):
             os.symlink(target, Path(root) / "linked.state.enc")
             self.assertEqual(store.list_names(), ["safe"])
 
+    def test_rejects_hardlinked_session_file_without_touching_external_inode(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+            store = BrowserSessionStore(root=root, key="test-key")
+            target = Path(outside) / "outside.enc"
+            target.write_bytes(b"do-not-touch")
+            os.chmod(target, 0o644)
+            os.link(target, store._path("shopify"))
+
+            with self.assertRaises(BrowserSessionError):
+                store.exists("shopify")
+            with self.assertRaises(BrowserSessionError):
+                store.save("shopify", {"cookies": [], "origins": []})
+            with self.assertRaises(BrowserSessionError):
+                store.load("shopify")
+            with self.assertRaises(BrowserSessionError):
+                store.delete("shopify")
+
+            self.assertEqual(target.read_bytes(), b"do-not-touch")
+            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o644)
+
+    def test_list_names_skips_hardlinks(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+            store = BrowserSessionStore(root=root, key="test-key")
+            store.save("safe", {"cookies": [], "origins": []})
+            target = Path(outside) / "external.state.enc"
+            target.write_bytes(b"external")
+            os.link(target, Path(root) / "linked.state.enc")
+            self.assertEqual(store.list_names(), ["safe"])
+
 
 if __name__ == "__main__":
     unittest.main()
