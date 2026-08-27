@@ -1,0 +1,15 @@
+(()=>{'use strict';
+const $=(s,r=document)=>r.querySelector(s);let loading=false,timer=0;
+function projectName(){return $('#projectSelect')?.selectedOptions?.[0]?.textContent?.trim()||$('.atlas-project-name')?.textContent?.trim()||'Текущий проект'}
+async function get(url){const r=await fetch(url,{credentials:'same-origin',cache:'no-store'}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||j.error||`HTTP ${r.status}`);return j}
+function integrationCount(v){return [v?.github?.configured,v?.n8n?.configured,(v?.shopify?.direct_configured||v?.shopify?.automation_bridge),v?.claude?.configured,v?.railway?.running].filter(Boolean).length}
+function basePaint(){const p=$('.ref-profile');if(p){const strong=$('strong',p),small=$('small',p);if(strong)strong.textContent=projectName();if(small){const live=$('.ref-brand-status span')?.textContent?.trim()||'workspace';small.textContent='Atlas Workspace · '+live}p.setAttribute('aria-label','Открыть Atlas Workspace');p.title='Workspace, бюджет, интеграции и настройки'}const pro=$('.ref-pro-card');if(pro){const b=$('button',pro);if(b){b.textContent='Управление планом';b.title='Открыть состояние Atlas Workspace'}}}
+async function refresh(){basePaint();const pro=$('.ref-pro-card');if(!pro||loading)return;loading=true;try{const settled=await Promise.allSettled([get('/app-budget'),get('/app-integrations/status')]);if(!document.contains(pro))return;const budget=settled[0].status==='fulfilled'?settled[0].value:null,ints=settled[1].status==='fulfilled'?settled[1].value:null,spent=Number(budget?.spent_usd??budget?.today_spent_usd??budget?.spent??0),limit=Number(budget?.daily_limit_usd??budget?.daily_limit??0),count=integrationCount(ints);const parts=[count+'/5 интеграций'];parts.push(limit>0?`бюджет $${spent.toFixed(2)} / $${limit.toFixed(2)}`:`расход $${spent.toFixed(2)}`);const p=$('p',pro);if(p)p.textContent=parts.join(' · ')}catch{const p=$('p',pro);if(p)p.textContent='Workspace проекта · live status недоступен'}finally{loading=false}}
+document.addEventListener('click',e=>{const profile=e.target.closest?.('.ref-profile');if(!profile)return;e.preventDefault();e.stopImmediatePropagation();window.AtlasWorkspaceControl?.open?.()||$('#settingsBtn')?.click()},true);
+document.addEventListener('change',e=>{if(e.target?.id==='projectSelect')setTimeout(refresh,40)});
+window.addEventListener('atlas-dashboard-live',refresh);window.addEventListener('atlas-brand-health',refresh);window.addEventListener('pageshow',refresh);
+function install(){basePaint();refresh();clearInterval(timer);timer=setInterval(refresh,60000)}
+new MutationObserver(()=>{if($('.ref-profile,.ref-pro-card'))basePaint()}).observe(document.documentElement,{childList:true,subtree:true});
+document.readyState==='loading'?document.addEventListener('DOMContentLoaded',install,{once:true}):install();
+window.AtlasProfileState={refresh};
+})();
