@@ -2,8 +2,9 @@
 const $=(s,r=document)=>r.querySelector(s);const BYPASS='atlasDialogBypass';
 async function askConfirm(options,fallback){if(window.AtlasDialog?.confirm){try{return await window.AtlasDialog.confirm(options)}catch(_err){}}return window.confirm(fallback)}
 async function askPrompt(options,fallback,value=''){if(window.AtlasDialog?.prompt){try{return await window.AtlasDialog.prompt(options)}catch(_err){}}return window.prompt(fallback,value)}
-function confirmedClick(button){const original=window.confirm;button.dataset[BYPASS]='1';try{window.confirm=()=>true;button.click()}finally{window.confirm=original}}
-function promptedClick(button,value){const original=window.prompt;button.dataset[BYPASS]='1';try{window.prompt=()=>value;button.click()}finally{window.prompt=original}}
+function clearBypass(button){if(button?.dataset?.[BYPASS]==='1')delete button.dataset[BYPASS]}
+function confirmedClick(button){const original=window.confirm;button.dataset[BYPASS]='1';try{window.confirm=()=>true;button.click()}finally{window.confirm=original;clearBypass(button)}}
+function promptedClick(button,value){const original=window.prompt;button.dataset[BYPASS]='1';try{window.prompt=()=>value;button.click()}finally{window.prompt=original;clearBypass(button)}}
 function takeBypass(button){if(button?.dataset?.[BYPASS]==='1'){delete button.dataset[BYPASS];return true}return false}
 async function handle(button){if(!button||takeBypass(button))return false;
   if(button.matches('.video-live [data-act="reset"]')){const ok=await askConfirm({eyebrow:'ATLAS · VIDEO STUDIO',title:'Сбросить storyboard?',message:'Текущие сцены и тайминг черновика будут заменены стартовой структурой. Сохранённый проект останется.',confirmLabel:'Сбросить',cancelLabel:'Отмена',danger:true},'Сбросить текущий storyboard и начать заново?');if(ok)confirmedClick(button);return true}
