@@ -107,7 +107,7 @@ def main() -> None:
 
     format_js = read_text("web/format.js")
     assert "data-safe-formatted" in format_js, "web/format.js missing required text: data-safe-formatted"
-    assert "URL_RE" in format_js, "web/format.js missing required text: URL_RE"
+    assert "prose-link" in format_js, "web/format.js missing required text: prose-link"
     assert "code-block" in format_js, "web/format.js missing required text: code-block"
     assert "eval(" not in format_js, "web/format.js must not contain eval("
 
