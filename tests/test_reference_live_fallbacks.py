@@ -24,6 +24,11 @@ class ReferenceLiveFallbackTests(unittest.TestCase):
         self.assertIn('AtlasRightPanel', source)
         self.assertIn('AtlasNavState', source)
 
+    def test_only_reference_navigation_is_visible_in_reference_sidebar(self):
+        css = (ROOT / 'web' / 'reference-v2.css').read_text(encoding='utf-8')
+        self.assertIn('.reference-sidebar>#dashSideNav{display:none!important}', css)
+        self.assertIn('.ref-nav{display:grid', css)
+
 
 if __name__ == '__main__':
     unittest.main()
