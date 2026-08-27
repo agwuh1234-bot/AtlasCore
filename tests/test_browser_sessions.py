@@ -185,6 +185,22 @@ class BrowserSessionStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(BrowserSessionError, "too large"):
                 store.load("shopify")
 
+    def test_save_rejects_non_finite_numbers_before_writing(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            for invalid in (float("nan"), float("inf"), float("-inf")):
+                with self.subTest(invalid=invalid):
+                    with self.assertRaisesRegex(BrowserSessionError, "valid JSON"):
+                        store.save("shopify", {"cookies": [], "origins": [], "value": invalid})
+                    self.assertFalse(store._path("shopify").exists())
+
+    def test_save_wraps_non_json_serializable_state(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            with self.assertRaisesRegex(BrowserSessionError, "valid JSON"):
+                store.save("shopify", {"cookies": [], "origins": [], "value": object()})
+            self.assertFalse(store._path("shopify").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
