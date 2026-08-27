@@ -29,12 +29,21 @@ class CodeStudioLiveTests(unittest.TestCase):
         self.assertNotIn("@router.put", source)
         self.assertNotIn("@router.delete", source)
 
-    def test_code_studio_mutations_stay_behind_developer_mode_confirmation(self):
+    def test_code_studio_mutations_stay_behind_atlas_confirmation_and_developer_mode(self):
         source = (ROOT / "web" / "code-studio-live.js").read_text(encoding="utf-8")
-        self.assertIn("confirm(`Применить изменение", source)
+        self.assertIn("window.AtlasDialog?.confirm", source)
+        self.assertIn("title:'Применить изменение?'", source)
         self.assertIn("writeModeBtn", source)
         self.assertIn("Текущий SHA файла", source)
         self.assertIn("не перезаписывай вслепую", source)
+        self.assertIn("window.confirm(`Применить изменение", source)
+
+    def test_code_studio_uses_native_atlas_feedback(self):
+        source = (ROOT / "web" / "code-studio-live.js").read_text(encoding="utf-8")
+        self.assertIn("window.AtlasNotice?.warn", source)
+        self.assertIn("window.AtlasNotice?.error", source)
+        self.assertIn("window.AtlasNotice?.success", source)
+        self.assertNotIn("alert('Сначала выберите файл.')", source)
 
     def test_safe_path_rejects_parent_traversal(self):
         self.assertEqual(_safe_path("web/app.js"), "web/app.js")
