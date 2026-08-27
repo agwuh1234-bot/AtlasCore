@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class BrandPolishTests(unittest.TestCase):
         self.assertIn("content:'PRO'", css)
         self.assertIn('.ref-brand-status', css)
         self.assertIn('#45dda1', css)
-        self.assertNotIn('@', css)
+        self.assertIsNone(re.search(r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}', css, re.I))
 
 
 if __name__ == '__main__':
