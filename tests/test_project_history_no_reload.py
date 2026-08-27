@@ -14,10 +14,19 @@ class ProjectHistoryNoReloadTests(unittest.TestCase):
         self.assertIn("atlas-history-hydrated", hydrate)
         self.assertIn('window.__ATLAS_PENDING_HISTORY', hydrate)
 
+    def test_startup_project_repair_never_reloads_document(self):
+        source = (ROOT / 'web' / 'projects.js').read_text(encoding='utf-8')
+        start = source.index('function repairActiveProject(id, select)')
+        end = source.index('\n\n  function showError', start)
+        repair = source[start:end]
+        self.assertNotIn('window.location.reload()', repair)
+        self.assertIn("source: 'startup-repair'", repair)
+        self.assertIn('repairActiveProject(fallback, select)', source)
+
     def test_explicit_project_switch_keeps_reload_boundary(self):
         source = (ROOT / 'web' / 'projects.js').read_text(encoding='utf-8')
         start = source.index('function setActiveProject(id)')
-        end = source.index('\n\n  function showError', start)
+        end = source.index('\n\n  function repairActiveProject', start)
         switch = source[start:end]
         self.assertIn('window.location.reload()', switch)
 
