@@ -46,6 +46,24 @@ class N8NGraphSafetyTests(unittest.TestCase):
         ]
         self.assertEqual(connection_shape_issues(body), ["duplicate_workflow_node_name:B"])
 
+    def test_shape_validator_blocks_non_mapping_workflow_node(self):
+        body = body_with_edges(("A", "B"))
+        body["nodes"] = [
+            {"name": "A", "type": "n8n-nodes-base.manualTrigger"},
+            "corrupt-node",
+            {"name": "B", "type": "n8n-nodes-base.noOp"},
+        ]
+        self.assertEqual(connection_shape_issues(body), ["malformed_workflow_node:1"])
+
+    def test_shape_validator_blocks_missing_workflow_node_name(self):
+        body = body_with_edges(("A", "B"))
+        body["nodes"] = [
+            {"name": "A", "type": "n8n-nodes-base.manualTrigger"},
+            {"type": "n8n-nodes-base.set"},
+            {"name": "B", "type": "n8n-nodes-base.noOp"},
+        ]
+        self.assertEqual(connection_shape_issues(body), ["malformed_workflow_node_name:1"])
+
     def test_shape_validator_blocks_nonzero_target_input_index(self):
         body = {"connections": {"A": {"main": [[{"node": "B", "type": "main", "index": 1}]]}}}
         self.assertEqual(connection_shape_issues(body), ["unsupported_connection_edge_index:A:1"])
