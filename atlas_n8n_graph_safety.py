@@ -36,23 +36,29 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
     cannot safely infer which duplicate instance should be retained or removed.
 
     When a workflow node list is available, connection endpoints must also refer
-    to real named nodes. This prevents stale or partially-deleted graph references
-    from being treated as a valid topology during repair or execution preflight.
+    to real uniquely-named nodes. Duplicate node names are rejected because n8n
+    connections address nodes by name, making repair targets ambiguous.
     """
     connections = body.get("connections")
     if not isinstance(connections, dict):
         return ["malformed_connections"]
 
+    issues: list[str] = []
     known_nodes: set[str] | None = None
     raw_nodes = body.get("nodes")
     if isinstance(raw_nodes, list):
-        known_nodes = {
-            node.get("name")
-            for node in raw_nodes
-            if isinstance(node, dict) and isinstance(node.get("name"), str) and node.get("name")
-        }
+        node_name_counts: dict[str, int] = {}
+        for node in raw_nodes:
+            if not isinstance(node, dict):
+                continue
+            name = node.get("name")
+            if isinstance(name, str) and name:
+                node_name_counts[name] = node_name_counts.get(name, 0) + 1
+        known_nodes = set(node_name_counts)
+        for name, count in node_name_counts.items():
+            if count > 1:
+                issues.append(f"duplicate_workflow_node_name:{name}")
 
-    issues: list[str] = []
     seen_edges: set[tuple[str, str, str, int, int]] = set()
     for source, outputs in connections.items():
         if not isinstance(source, str) or not source:
