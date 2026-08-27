@@ -1,7 +1,9 @@
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s);const BYPASS='atlasDialogBypass';const PENDING=new WeakSet();const PENDING_A11Y=new WeakMap();
-async function askConfirm(options,fallback){if(window.AtlasDialog?.confirm){try{return await window.AtlasDialog.confirm(options)}catch(_err){}}return window.confirm(fallback)}
-async function askPrompt(options,fallback,value=''){if(window.AtlasDialog?.prompt){try{return await window.AtlasDialog.prompt(options)}catch(_err){}}return window.prompt(fallback,value)}
+function nativeConfirm(fallback){try{return window.confirm(fallback)}catch(_err){return false}}
+function nativePrompt(fallback,value=''){try{return window.prompt(fallback,value)}catch(_err){return null}}
+async function askConfirm(options,fallback){if(window.AtlasDialog?.confirm){try{return await window.AtlasDialog.confirm(options)}catch(_err){}}return nativeConfirm(fallback)}
+async function askPrompt(options,fallback,value=''){if(window.AtlasDialog?.prompt){try{return await window.AtlasDialog.prompt(options)}catch(_err){}}return nativePrompt(fallback,value)}
 function clearBypass(button){if(button?.dataset?.[BYPASS]==='1')delete button.dataset[BYPASS]}
 function confirmedClick(button){const original=window.confirm;button.dataset[BYPASS]='1';try{window.confirm=()=>true;button.click()}finally{window.confirm=original;clearBypass(button)}}
 function promptedClick(button,value){const original=window.prompt;button.dataset[BYPASS]='1';try{window.prompt=()=>value;button.click()}finally{window.prompt=original;clearBypass(button)}}
