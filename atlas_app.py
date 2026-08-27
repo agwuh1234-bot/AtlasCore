@@ -8,6 +8,7 @@ from atlas_n8n_executor import build_n8n_executor_router
 from atlas_code_api import build_code_router
 from atlas_automation_api import build_automation_router
 from atlas_automation_executions_api import build_automation_executions_router
+from atlas_integrations_status_api import build_integrations_status_router
 
 api = atlas.api
 
@@ -48,6 +49,14 @@ api.include_router(
 # exposes only bounded metadata, never execution payloads or credentials.
 api.include_router(
     build_automation_executions_router(
+        verify_request=atlas.verify_app_request,
+    )
+)
+
+# Coarse integration capability/status flags used by the command-center UI.
+# Secret values and credential identifiers are intentionally never returned.
+api.include_router(
+    build_integrations_status_router(
         verify_request=atlas.verify_app_request,
     )
 )
