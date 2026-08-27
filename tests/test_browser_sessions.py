@@ -29,6 +29,23 @@ class BrowserSessionStoreTests(unittest.TestCase):
             BrowserSessionStore(root=str(root), key="test-key")
             self.assertEqual(stat.S_IMODE(root.stat().st_mode), 0o700)
 
+    def test_saved_session_permissions_are_restricted(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            store.save("shopify", {"cookies": [], "origins": []})
+            self.assertEqual(stat.S_IMODE(store._path("shopify").stat().st_mode), 0o600)
+
+    def test_load_repairs_permissive_session_permissions(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            state = {"cookies": [], "origins": []}
+            store.save("shopify", state)
+            path = store._path("shopify")
+            os.chmod(path, 0o644)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o644)
+            self.assertEqual(store.load("shopify"), state)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
     def test_wrong_key_cannot_decrypt(self):
         with tempfile.TemporaryDirectory() as root:
             BrowserSessionStore(root=root, key="key-one").save("shopify", {"cookies": [], "origins": []})
