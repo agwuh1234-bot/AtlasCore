@@ -37,7 +37,7 @@ N8N_TOOLS = [
     {
         "type": "function",
         "name": "n8n_call_tool",
-        "description": "Call one tool exposed by the connected n8n MCP server. First validate unfamiliar or mutating operations with n8n_preflight_tool. Declare intent=read for inspection/list/get operations and intent=write for mutations. Writes are server-policy gated and destructive operations have a separate gate.",
+        "description": "Call one tool exposed by the connected n8n instance-level MCP server. First validate unfamiliar or mutating operations with n8n_preflight_tool. Declare intent=read for inspection/list/get operations and intent=write for mutations. Writes are server-policy gated and destructive operations have a separate gate.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -143,6 +143,108 @@ async def execute_tool(name, arguments, run_context=None):
 atlas.execute_tool = execute_tool
 
 
+_original_run_atlas = atlas.run_atlas
+
+
+def _claude_failure_message(review):
+    error = str((review or {}).get("error") or "claude_review_failed")
+    if error == "claude_not_configured":
+        return "Claude не подключён к Atlas."
+    if error == "claude_daily_limit_reached":
+        return "Дневной лимит Claude исчерпан."
+    if error == "claude_api_error":
+        status = (review or {}).get("status")
+        return f"Claude API вернул ошибку {status}." if status else "Claude API вернул ошибку."
+    if error == "claude_request_failed":
+        return "Claude не ответил из-за ошибки соединения."
+    return "Проверка Claude не выполнена."
+
+
+async def run_atlas(
+    text,
+    previous_response_id=None,
+    allow_writes=True,
+    attachments=None,
+    claude_review=False,
+    project_id="project-general",
+    job_id=None,
+):
+    """Run Atlas and make the Claude-review switch deterministic.
+
+    Normal Atlas requests keep the original execution path. When Claude review is
+    requested, Atlas first produces its own answer and Claude then receives that
+    exact answer plus the original task for an independent critique. The review
+    is appended visibly, so the UI can never claim Claude checked a response when
+    no Claude call happened.
+    """
+    draft = await _original_run_atlas(
+        text,
+        previous_response_id,
+        allow_writes=allow_writes,
+        attachments=attachments,
+        claude_review=False,
+        project_id=project_id,
+        job_id=job_id,
+    )
+    if not claude_review:
+        return draft
+
+    review = None
+    if not atlas.ANTHROPIC_API_KEY:
+        review = {"ok": False, "error": "claude_not_configured"}
+    elif not atlas.BUDGET.allow_claude():
+        review = {"ok": False, "error": "claude_daily_limit_reached"}
+    else:
+        review_prompt = (
+            "Ты независимый ревьюер результата Atlas. Проверь ответ по исходной задаче. "
+            "Ищи фактические ошибки, пропущенные риски, неверные утверждения и конкретные исправления. "
+            "Не переписывай всё без необходимости. Формат: Вердикт; Ошибки/риски; Что исправить.\n\n"
+            f"Исходная задача пользователя:\n{str(text or '')[:4500]}\n\n"
+            f"Ответ Atlas:\n{str(draft.output_text or '')[:6500]}"
+        )
+        raw_review = await atlas.claude_ask(review_prompt)
+        try:
+            review = json.loads(raw_review) if isinstance(raw_review, str) else raw_review
+        except (TypeError, ValueError):
+            review = {"ok": False, "error": "claude_review_invalid_response"}
+
+    usage = dict(draft.usage or {})
+    if isinstance(review, dict) and review.get("ok") and str(review.get("answer") or "").strip():
+        model = str(review.get("model") or atlas.CLAUDE_MODEL)
+        answer = str(review.get("answer") or "").strip()
+        try:
+            normalized_project = atlas.STORE._project_id(project_id)
+            atlas.BUDGET.record_claude(job_id, normalized_project, model)
+        except Exception:
+            atlas.logger.exception("Failed to record Claude review usage")
+        atlas.logger.info("CLAUDE_REVIEW ok=true model=%s", model[:80])
+        usage["claude_review"] = {"ok": True, "model": model}
+        output_text = f"{draft.output_text}\n\n### Проверка Claude\n{answer}".strip()
+    else:
+        review = review if isinstance(review, dict) else {"ok": False, "error": "claude_review_failed"}
+        atlas.logger.warning(
+            "CLAUDE_REVIEW ok=false error=%s status=%s",
+            str(review.get("error") or "unknown")[:80],
+            str(review.get("status") or "")[:16],
+        )
+        usage["claude_review"] = {
+            "ok": False,
+            "error": str(review.get("error") or "claude_review_failed")[:80],
+        }
+        output_text = f"{draft.output_text}\n\n### Проверка Claude\n{_claude_failure_message(review)}".strip()
+
+    return atlas.AtlasRunResult(
+        id=draft.id,
+        output_text=output_text,
+        model=draft.model,
+        route=draft.route,
+        usage=usage,
+    )
+
+
+atlas.run_atlas = run_atlas
+
+
 async def _probe_n8n():
     if not n8n_configured():
         atlas.logger.warning("N8N_MCP_PROBE configured=false")
@@ -166,6 +268,44 @@ async def _probe_n8n():
         atlas.logger.warning("N8N_MCP_PROBE ok=false error=%s", type(exc).__name__)
 
 
+async def _probe_claude():
+    if os.environ.get("CLAUDE_STARTUP_PROBE", "").strip() != "1":
+        return
+    if not atlas.ANTHROPIC_API_KEY:
+        atlas.logger.warning("CLAUDE_STARTUP_PROBE ok=false configured=false")
+        return
+    try:
+        async with atlas.httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                "https://api.anthropic.com/v1/models",
+                headers={
+                    "x-api-key": atlas.ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                },
+                params={"limit": 100},
+            )
+        if response.status_code != 200:
+            atlas.logger.warning("CLAUDE_STARTUP_PROBE ok=false status=%s", response.status_code)
+            return
+        data = response.json()
+        model_ids = {
+            str(item.get("id") or "")
+            for item in (data.get("data") or [])
+            if isinstance(item, dict)
+        }
+        available = atlas.CLAUDE_MODEL in model_ids
+        log = atlas.logger.info if available else atlas.logger.warning
+        log(
+            "CLAUDE_STARTUP_PROBE ok=%s model=%s available=%s visible_models=%d",
+            str(available).lower(),
+            atlas.CLAUDE_MODEL[:80],
+            str(available).lower(),
+            len(model_ids),
+        )
+    except Exception as exc:
+        atlas.logger.warning("CLAUDE_STARTUP_PROBE ok=false error=%s", type(exc).__name__)
+
+
 @atlas.api.get("/integrations/n8n/health")
 async def n8n_health():
     if not n8n_configured():
@@ -184,6 +324,7 @@ _original_lifespan = atlas.api.router.lifespan_context
 @asynccontextmanager
 async def _atlas_lifespan_with_n8n(app):
     async with _original_lifespan(app):
+        await _probe_claude()
         await _probe_n8n()
         await maybe_bootstrap_test_workflow(atlas.logger)
         await maybe_add_second_test_node(atlas.logger)
