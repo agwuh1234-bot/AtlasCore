@@ -1,6 +1,7 @@
 (function(){
   'use strict';
   var sent={};
+  var diag=/[?&]diag=/.test(location.search);
   function text(value,limit){
     var s='';
     try{s=value==null?'':String(value)}catch(e){s='unprintable'}
@@ -24,6 +25,10 @@
       }).catch(function(){});
     }catch(e){}
   }
+  function lifecycle(kind,message){
+    if(!diag)return;
+    report({kind:kind,message:message||'',source:'lifecycle',line:'',column:'',stack:''});
+  }
   window.addEventListener('error',function(event){
     var err=event&&event.error;
     report({
@@ -46,6 +51,12 @@
       stack:text(reason&&reason.stack||'',1200)
     });
   });
+  if(diag){
+    lifecycle('lifecycle.boot','ready='+document.readyState);
+    window.addEventListener('pagehide',function(event){lifecycle('lifecycle.pagehide','persisted='+(event&&event.persisted===true));});
+    window.addEventListener('pageshow',function(event){lifecycle('lifecycle.pageshow','persisted='+(event&&event.persisted===true));});
+    document.addEventListener('visibilitychange',function(){lifecycle(document.hidden?'lifecycle.hidden':'lifecycle.visible','visibility='+document.visibilityState);});
+  }
   window.setTimeout(function(){
     try{
       var login=document.getElementById('loginCard');
