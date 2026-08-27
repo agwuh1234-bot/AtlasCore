@@ -30,6 +30,13 @@ class BrowserSessionStoreTests(unittest.TestCase):
             BrowserSessionStore(root=str(root), key="test-key")
             self.assertEqual(stat.S_IMODE(root.stat().st_mode), 0o700)
 
+    def test_rejects_symlinked_session_root(self):
+        with tempfile.TemporaryDirectory() as parent, tempfile.TemporaryDirectory() as outside:
+            root = Path(parent) / "sessions"
+            os.symlink(outside, root)
+            with self.assertRaisesRegex(BrowserSessionError, "cannot be opened safely"):
+                BrowserSessionStore(root=str(root), key="test-key")
+
     def test_saved_session_permissions_are_restricted(self):
         with tempfile.TemporaryDirectory() as root:
             store = BrowserSessionStore(root=root, key="test-key")
