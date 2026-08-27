@@ -17,6 +17,14 @@ class PwaRuntimeRefreshTests(unittest.TestCase):
         self.assertNotIn("body.allow_writes = true", source)
         self.assertNotIn("body.allow_writes=true", source)
 
+    def test_push_navigation_is_restricted_to_same_origin(self):
+        source = (ROOT / "web" / "sw.js").read_text(encoding="utf-8")
+        self.assertIn("function safeNotificationTarget(rawTarget)", source)
+        self.assertIn("parsed.origin !== self.location.origin", source)
+        self.assertIn("data: { url: safeNotificationTarget(payload.url) }", source)
+        self.assertIn("const target = safeNotificationTarget(", source)
+        self.assertNotIn("const target = (event.notification.data && event.notification.data.url) || '/'", source)
+
     def test_runtime_cleans_atlas_workers_without_reload_loop(self):
         source = (ROOT / "web" / "runtime-refresh.js").read_text(encoding="utf-8")
         app_source = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
