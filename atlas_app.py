@@ -12,6 +12,36 @@ from atlas_integrations_status_api import build_integrations_status_router
 
 api = atlas.api
 
+
+@api.middleware("http")
+async def atlas_pwa_cache_policy(request, call_next):
+    """Keep the installed Atlas app fresh while never caching live API state."""
+    response = await call_next(request)
+    path = request.url.path
+
+    no_store = {
+        "/",
+        "/health",
+        "/app/",
+        "/app/index.html",
+        "/app/sw.js",
+        "/app/manifest.json",
+    }
+    if path in no_store or path.startswith("/app-") or path.startswith("/integrations/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    elif path.startswith("/app/") and path.endswith((".js", ".css", ".html", ".json")):
+        response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+
+    if path == "/app/sw.js":
+        # The installed PWA starts at '/', so this worker must be allowed to
+        # control the root document as well as /app/* assets.
+        response.headers["Service-Worker-Allowed"] = "/"
+
+    return response
+
+
 # General authenticated executor, including Claude.
 api.include_router(
     build_executor_router(
