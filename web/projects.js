@@ -80,6 +80,8 @@
     } catch {
       // URL cleanup is optional; project persistence is the source of truth.
     }
+    // Project changes are an explicit navigation boundary. This is the only
+    // reload kept here; passive history hydration must never restart Atlas.
     window.location.reload();
   }
 
@@ -271,12 +273,24 @@
         }
       }
       if (!history.length) return;
-      rawSet.call(localStorage, historyKey, JSON.stringify(history.slice(-100)));
+      const snapshot = history.slice(-100);
+      rawSet.call(localStorage, historyKey, JSON.stringify(snapshot));
       const last = jobs.slice().reverse().find((job) => job.response_id);
-      if (last) {
-        rawSet.call(localStorage, 'atlas_response_id:' + activeProject, String(last.response_id));
+      const responseId = last ? String(last.response_id) : '';
+      if (responseId) {
+        rawSet.call(localStorage, 'atlas_response_id:' + activeProject, responseId);
       }
-      window.location.reload();
+      // Never reload the document after a passive history restore. Safari may
+      // be resuming from background and a reload here used to restart the full
+      // Atlas shell. Persist the snapshot and expose it to newer runtimes; the
+      // next natural render/session can consume it without a page restart.
+      const detail = { project_id: activeProject, history: snapshot, response_id: responseId };
+      window.__ATLAS_PENDING_HISTORY = detail;
+      try {
+        window.dispatchEvent(new CustomEvent('atlas-history-hydrated', { detail }));
+      } catch {
+        // Persistence above is the durable fallback.
+      }
     } catch {
       // Login may not have completed yet.
     }
