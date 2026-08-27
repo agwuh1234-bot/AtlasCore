@@ -41,6 +41,9 @@ _QUERY_CREDENTIAL_RE = re.compile(
 _SIGNED_URL_SIGNATURE_RE = re.compile(
     r"(?i)([?&](?:x-amz-signature|x-goog-signature|signature|sig)=)([^&#\s]+)"
 )
+_SIGNED_URL_CREDENTIAL_RE = re.compile(
+    r"(?i)([?&](?:x-amz-credential|x-goog-credential)=)([^&#\s]+)"
+)
 _PLAINTEXT_CREDENTIAL_RE = re.compile(
     r"(?i)(\b(?:[a-z0-9_.-]*(?:token|secret|password|cookie|credentials)|api[_-]?key|apikey)\b\s*[:=]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&#]+)"
 )
@@ -103,6 +106,7 @@ def _sanitize_string(value: str) -> str:
     redacted = _BASIC_VALUE_RE.sub("Basic <redacted>", redacted)
     redacted = _QUERY_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _SIGNED_URL_SIGNATURE_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
+    redacted = _SIGNED_URL_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _PLAINTEXT_CREDENTIAL_RE.sub(lambda match: f"{match.group(1)}<redacted>", redacted)
     redacted = _URL_USERINFO_RE.sub(lambda match: f"{match.group(1)}<redacted>@", redacted)
     redacted = _WEBHOOK_CREDENTIAL_URL_RE.sub(lambda match: f"{match.group(1)}<redacted-webhook>", redacted)
