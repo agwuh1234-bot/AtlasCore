@@ -4,7 +4,7 @@ const ACTIVE='atlas_active_project_id';
 let overlay=null,previousFocus=null;
 function projectId(){try{return localStorage.getItem(ACTIVE)||'project-general'}catch{return'project-general'}}
 function projectName(){return $('#projectSelect')?.selectedOptions?.[0]?.textContent?.trim()||$('.atlas-project-name')?.textContent?.trim()||'Atlas project'}
-function deepLink(){const u=new URL(location.href);u.searchParams.set('project',projectId());u.hash='';return u.toString()}
+function deepLink(){const u=new URL(location.pathname,location.origin);u.searchParams.set('project',projectId());return u.toString()}
 async function get(url){const r=await fetch(url,{credentials:'same-origin',cache:'no-store'}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||j.error||`HTTP ${r.status}`);return j}
 async function copy(text){try{await navigator.clipboard.writeText(text);return true}catch{}const t=document.createElement('textarea');t.value=text;t.setAttribute('readonly','');t.style.position='fixed';t.style.opacity='0';document.body.append(t);t.select();let ok=false;try{ok=document.execCommand('copy')}catch{}t.remove();return ok}
 function close(){if(!overlay)return;overlay.remove();overlay=null;document.body.classList.remove('atlas-share-open');const f=previousFocus;previousFocus=null;try{f?.focus?.({preventScroll:true})}catch{}}
