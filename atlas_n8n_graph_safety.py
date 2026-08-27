@@ -39,6 +39,7 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
         issues.append("malformed_nodes")
     elif isinstance(raw_nodes, list):
         node_name_counts: dict[str, int] = {}
+        node_id_counts: dict[str, int] = {}
         for node_index, node in enumerate(raw_nodes):
             if not isinstance(node, dict):
                 issues.append(f"malformed_workflow_node:{node_index}")
@@ -48,6 +49,13 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
                 issues.append(f"malformed_workflow_node_name:{node_index}")
                 continue
             node_name_counts[name] = node_name_counts.get(name, 0) + 1
+
+            if "id" in node:
+                node_id = node.get("id")
+                if not isinstance(node_id, str) or not node_id.strip():
+                    issues.append(f"malformed_workflow_node_id:{name}")
+                else:
+                    node_id_counts[node_id] = node_id_counts.get(node_id, 0) + 1
 
             node_type = node.get("type")
             if not isinstance(node_type, str) or not node_type:
@@ -70,6 +78,9 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
         for name, count in node_name_counts.items():
             if count > 1:
                 issues.append(f"duplicate_workflow_node_name:{name}")
+        for node_id, count in node_id_counts.items():
+            if count > 1:
+                issues.append(f"duplicate_workflow_node_id:{node_id}")
 
     seen_edges: set[tuple[str, str, str, int, int]] = set()
     for source, outputs in connections.items():
