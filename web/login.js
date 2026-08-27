@@ -9,6 +9,9 @@ function focusInput(){
   try{input.focus({preventScroll:true})}catch{try{input.focus()}catch{}}
 }
 
+input.addEventListener('pointerdown',()=>setTimeout(focusInput,0),{passive:true});
+input.addEventListener('touchend',()=>setTimeout(focusInput,0),{passive:true});
+
 async function verifySession(){
   try{
     const r=await fetch('/app-session?login_check='+Date.now(),{
