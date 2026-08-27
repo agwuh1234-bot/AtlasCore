@@ -31,6 +31,9 @@ class BrowserSessionStore:
         self.root.mkdir(parents=True, exist_ok=True)
         if self.root.is_symlink():
             raise BrowserSessionError("Session directory must not be a symlink")
+        if not self.root.is_dir():
+            raise BrowserSessionError("Session directory is invalid")
+        os.chmod(self.root, 0o700)
         raw_key = key or os.environ.get("ATLAS_BROWSER_SESSION_KEY", "")
         if not raw_key:
             raise BrowserSessionError("ATLAS_BROWSER_SESSION_KEY is required")
