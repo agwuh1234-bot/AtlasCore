@@ -41,6 +41,14 @@ class NavStateModeTests(unittest.TestCase):
         for action in ("home", "chat", "projects", "files", "tools", "templates", "integrations", "settings"):
             self.assertIn(f"function {action}(){{collapseSidebar();", source)
 
+    def test_escape_closes_open_mobile_sidebar(self):
+        source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
+        self.assertIn("document.addEventListener('keydown'", source)
+        self.assertIn("e.key==='Escape'", source)
+        self.assertIn("innerWidth<980", source)
+        self.assertIn("classList.contains('atlas-sidebar-open')", source)
+        self.assertIn("collapseSidebar()", source)
+
     def test_focus_chat_css_removes_dashboard_noise(self):
         css = (ROOT / "web" / "nav-state.css").read_text(encoding="utf-8")
         self.assertIn("body.atlas-chat-focus .atlas-dashboard-right", css)
