@@ -80,9 +80,22 @@
     } catch {
       // URL cleanup is optional; project persistence is the source of truth.
     }
-    // Project changes are an explicit navigation boundary. This is the only
-    // reload kept here; passive history hydration must never restart Atlas.
+    // A user-selected project change is an explicit navigation boundary.
     window.location.reload();
+  }
+
+  function repairActiveProject(id, select) {
+    if (!id || id === activeProject) return;
+    activeProject = id;
+    rawSet.call(localStorage, ACTIVE_PROJECT, id);
+    if (select) select.value = id;
+    try {
+      window.dispatchEvent(new CustomEvent('atlas-project-changed', {
+        detail: { project_id: id, source: 'startup-repair' },
+      }));
+    } catch {
+      // Persistence above is enough; startup repair must never reload Atlas.
+    }
   }
 
   function showError(message) {
@@ -182,7 +195,10 @@
         select.append(option);
       }
       const found = Array.from(select.options).some((option) => option.value === activeProject);
-      if (!found) setActiveProject((select.options[0] && select.options[0].value) || DEFAULT_PROJECT);
+      if (!found) {
+        const fallback = (select.options[0] && select.options[0].value) || DEFAULT_PROJECT;
+        repairActiveProject(fallback, select);
+      }
     } catch (error) {
       if (!String(error.message).includes('Unauthorized')) select.title = error.message;
     }
@@ -280,10 +296,6 @@
       if (responseId) {
         rawSet.call(localStorage, 'atlas_response_id:' + activeProject, responseId);
       }
-      // Never reload the document after a passive history restore. Safari may
-      // be resuming from background and a reload here used to restart the full
-      // Atlas shell. Persist the snapshot and expose it to newer runtimes; the
-      // next natural render/session can consume it without a page restart.
       const detail = { project_id: activeProject, history: snapshot, response_id: responseId };
       window.__ATLAS_PENDING_HISTORY = detail;
       try {
