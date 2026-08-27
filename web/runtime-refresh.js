@@ -1,5 +1,5 @@
 (()=>{'use strict';
-const BUILD='atlas-runtime-stable-20260827d';
+const BUILD='atlas-runtime-stable-20260827e';
 let healthTimer=0,cleanupStarted=false,guardCard=null,guardObserver=null,resumeGeneration=0;
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function bounded(promise,ms=1800){try{return await Promise.race([Promise.resolve(promise),delay(ms).then(()=>null)])}catch{return null}}
@@ -14,7 +14,9 @@ async function failSoftBoot(authenticated){const ok=authenticated===true?true:aw
 function stopHealthLoop(){if(healthTimer){clearInterval(healthTimer);healthTimer=0}}
 function startHealthLoop(){if(document.hidden||healthTimer)return;healthTimer=setInterval(()=>{if(!document.hidden)void health()},15000)}
 async function resume(source='resume'){const generation=++resumeGeneration;installLoginGuard();startHealthLoop();const [online,authenticated]=await Promise.all([health(),session()]);if(generation!==resumeGeneration)return;if(authenticated)await failSoftBoot(true);try{window.dispatchEvent(new CustomEvent('atlas-runtime-resume',{detail:{source,online,authenticated,build:BUILD}}))}catch{}}
-function boot(){installLoginGuard();startHealthLoop();void resume('boot');setTimeout(()=>void removeAtlasWorkers(),2200);window.addEventListener('online',()=>void resume('online'));window.addEventListener('offline',()=>paint(false));window.addEventListener('pagehide',()=>{stopHealthLoop()});window.addEventListener('pageshow',event=>{void resume(event.persisted?'pageshow-bfcache':'pageshow')});document.addEventListener('visibilitychange',()=>{if(document.hidden){stopHealthLoop();return}void resume('visible')})}
+function boot(){installLoginGuard();startHealthLoop();void resume('boot');window.addEventListener('online',()=>void resume('online'));window.addEventListener('offline',()=>paint(false));window.addEventListener('pagehide',()=>{stopHealthLoop()});window.addEventListener('pageshow',event=>{void resume(event.persisted?'pageshow-bfcache':'pageshow')});document.addEventListener('visibilitychange',()=>{if(document.hidden){stopHealthLoop();return}void resume('visible')})}
 document.readyState==='loading'?document.addEventListener('DOMContentLoaded',boot,{once:true}):boot();
+// Worker cleanup is deliberately manual-only. Removing a controlling worker/cache
+// during normal Safari boot or resume can restart the document on iPadOS.
 window.AtlasRuntimeRefresh={health,session,installLoginGuard,removeAtlasWorkers,revealCore,resume,build:BUILD};
 })();
