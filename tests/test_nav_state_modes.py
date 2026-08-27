@@ -32,6 +32,15 @@ class NavStateModeTests(unittest.TestCase):
         self.assertIn("AtlasIntegrations?.close", source)
         self.assertIn(".atlas-settings-overlay", source)
 
+    def test_mobile_navigation_collapses_sidebar(self):
+        source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
+        self.assertIn("function collapseSidebar()", source)
+        self.assertIn("innerWidth>=980", source)
+        self.assertIn("atlas-sidebar-open", source)
+        self.assertIn("atlas_sidebar_open", source)
+        for action in ("home", "chat", "projects", "files", "tools", "templates", "integrations", "settings"):
+            self.assertIn(f"function {action}(){{collapseSidebar();", source)
+
     def test_focus_chat_css_removes_dashboard_noise(self):
         css = (ROOT / "web" / "nav-state.css").read_text(encoding="utf-8")
         self.assertIn("body.atlas-chat-focus .atlas-dashboard-right", css)
