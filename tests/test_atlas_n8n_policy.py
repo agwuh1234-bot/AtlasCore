@@ -31,6 +31,17 @@ class N8NPolicyTests(unittest.TestCase):
             self.assertEqual(decision("create_workflow", "write"), (True, "ok"))
             self.assertEqual(decision("delete_workflow", "write"), (False, "destructive_disabled"))
 
+    def test_generic_write_can_be_escalated_to_destructive_intent(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("N8N_DESTRUCTIVE_ENABLED", None)
+            self.assertEqual(decision("update_workflow", "destructive"), (False, "destructive_disabled"))
+        with patch.dict(os.environ, {"N8N_DESTRUCTIVE_ENABLED": "true"}, clear=False):
+            self.assertEqual(decision("update_workflow", "destructive"), (True, "ok"))
+
+    def test_destructive_intent_does_not_grant_read_tools(self):
+        with patch.dict(os.environ, {"N8N_DESTRUCTIVE_ENABLED": "true"}, clear=False):
+            self.assertEqual(decision("get_workflow_details", "destructive"), (False, "intent_mismatch"))
+
     def test_preflight_requires_exact_discovered_tool(self):
         tools = [{"name": "list_workflows", "description": "List", "inputSchema": {"type": "object"}}]
         missing = preflight(tools, "list_workflow", "read")
