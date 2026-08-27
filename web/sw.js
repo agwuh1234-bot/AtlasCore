@@ -1,57 +1,88 @@
-const CACHE_NAME = 'atlas-app-v20';
-const ASSETS = ['/', '/app/manifest.json', '/app/styles.css', '/app/projects.css', '/app/format.css', '/app/shell.css', '/app/projects.js', '/app/files.js', '/app/control_center.js', '/app/push.js', '/app/app.js', '/app/ux.js', '/app/status.js', '/app/format.js', '/app/recovery.js', '/app/shell.js', '/app/icon.svg'];
+const CACHE_NAME = 'atlas-app-v21-20260827';
+const LEGACY_CACHE_PREFIX = 'atlas-app-';
+const SHELL = ['/', '/app/', '/app/manifest.json', '/app/icon.svg'];
+
+function isApiPath(pathname) {
+  return pathname === '/health'
+    || pathname === '/task'
+    || pathname === '/bridge'
+    || pathname.startsWith('/app-')
+    || pathname.startsWith('/integrations/')
+    || pathname === '/mcp'
+    || pathname.startsWith('/mcp/');
+}
+
+async function fetchFresh(request) {
+  return fetch(new Request(request, { cache: 'no-store' }));
+}
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await Promise.allSettled(SHELL.map(async (url) => {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (response.ok) await cache.put(url, response.clone());
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys.filter((key) => key.startsWith('atlas-app-') && key !== CACHE_NAME).map((key) => caches.delete(key))
-    )).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    const hadLegacyCache = keys.some((key) => key.startsWith(LEGACY_CACHE_PREFIX) && key !== CACHE_NAME);
+    await Promise.all(keys
+      .filter((key) => key.startsWith(LEGACY_CACHE_PREFIX) && key !== CACHE_NAME)
+      .map((key) => caches.delete(key)));
+    await self.clients.claim();
+
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    await Promise.allSettled(windows.map(async (client) => {
+      client.postMessage({ type: 'ATLAS_SW_UPDATED', version: CACHE_NAME });
+      // One-time migration from the old stale-cache worker. This makes an
+      // already-open installed PWA pick up the current app shell immediately.
+      if (hadLegacyCache && client.navigate) await client.navigate(client.url);
+    }));
+  })());
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data?.type === 'CLEAR_ATLAS_CACHE') {
+    event.waitUntil(caches.keys().then((keys) => Promise.all(
+      keys.filter((key) => key.startsWith(LEGACY_CACHE_PREFIX)).map((key) => caches.delete(key))
+    )));
+  }
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Developer Mode: authenticated chat jobs keep GitHub write tools available.
-  // Atlas still has no delete tool; destructive/external actions remain outside this grant.
-  if (event.request.method === 'POST' && url.pathname === '/app-jobs') {
-    event.respondWith((async () => {
-      try {
-        const body = await event.request.clone().json();
-        body.allow_writes = true;
-        const headers = new Headers(event.request.headers);
-        headers.set('Content-Type', 'application/json');
-        return fetch(new Request(event.request, {
-          headers,
-          body: JSON.stringify(body),
-        }));
-      } catch {
-        return fetch(event.request);
-      }
-    })());
+  // Never cache or rewrite authenticated/API traffic. In particular, the
+  // service worker must not change allow_writes on Atlas jobs.
+  if (event.request.method !== 'GET' || isApiPath(url.pathname)) {
+    if (event.request.method === 'GET' && isApiPath(url.pathname)) {
+      event.respondWith(fetchFresh(event.request));
+    }
     return;
   }
 
-  if (event.request.method !== 'GET') return;
   event.respondWith((async () => {
     try {
-      const response = await fetch(event.request);
-      if (response && response.ok) {
+      const response = await fetchFresh(event.request);
+      if (response && response.ok && response.type !== 'opaque') {
         const cache = await caches.open(CACHE_NAME);
-        cache.put(event.request, response.clone());
+        await cache.put(event.request, response.clone());
       }
       return response;
-    } catch {
+    } catch (error) {
       const cached = await caches.match(event.request);
       if (cached) return cached;
-      if (event.request.mode === 'navigate') return caches.match('/');
-      throw new Error('offline');
+      if (event.request.mode === 'navigate') {
+        return (await caches.match('/')) || (await caches.match('/app/')) || Promise.reject(error);
+      }
+      throw error;
     }
   })());
 });
