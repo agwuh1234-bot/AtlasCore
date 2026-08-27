@@ -34,6 +34,12 @@ class SettingsCenterTests(unittest.TestCase):
         self.assertIn("confirm('Очистить историю текущего чата?')", source)
         self.assertIn("confirm('Выйти из Atlas?')", source)
 
+    def test_settings_dialog_moves_and_restores_focus(self):
+        source = (ROOT / "web" / "settings-center.js").read_text(encoding="utf-8")
+        self.assertIn("previousFocus=document.activeElement", source)
+        self.assertIn("target?.focus?.()", source)
+        self.assertIn("$('.atlas-settings-close',overlay)?.focus()", source)
+
 
 if __name__ == "__main__":
     unittest.main()
