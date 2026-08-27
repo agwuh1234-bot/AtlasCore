@@ -1,0 +1,3 @@
+# Pre-PR checkpoint
+
+The branch is intentionally stopped at the PR validation boundary, not at production deployment. This is the correct checkpoint: code, tests, guarded integration patch, rollout plan, canary, recovery and rollback contracts are present. Opening the PR is now the action that creates new evidence (CI results). Further speculative production edits before that evidence would reduce safety rather than increase progress.

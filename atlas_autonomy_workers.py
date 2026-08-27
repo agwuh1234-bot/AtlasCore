@@ -4,13 +4,15 @@ import asyncio
 from typing import Any
 
 from atlas_browser_jobs import BrowserJobManager
+from atlas_claude_worker import ClaudeWorker
 
 
 class AutonomyWorkers:
     """Adapters that expose real Atlas capabilities to AutonomousTaskEngine."""
 
-    def __init__(self, *, browser: BrowserJobManager | None = None) -> None:
+    def __init__(self, *, browser: BrowserJobManager | None = None, claude: ClaudeWorker | None = None) -> None:
         self.browser = browser
+        self.claude = claude or ClaudeWorker()
 
     async def browser_worker(self, payload: dict[str, Any]) -> dict[str, Any]:
         if self.browser is None:
@@ -36,8 +38,10 @@ class AutonomyWorkers:
                 raise TimeoutError("browser_job_timeout")
             await asyncio.sleep(.25)
 
+    async def claude_worker(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self.claude(payload)
+
     async def verify_worker(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Deterministic assertions over prior/artifact data supplied by planner."""
         value = payload.get("value")
         checks = list(payload.get("checks") or [])
         failures: list[str] = []
@@ -63,5 +67,6 @@ class AutonomyWorkers:
 
     def register(self, engine: Any) -> None:
         engine.register_worker("browser", self.browser_worker)
+        engine.register_worker("claude", self.claude_worker)
         engine.register_worker("verify", self.verify_worker)
         engine.register_worker("approval", self.approval_worker)
