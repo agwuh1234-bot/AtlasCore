@@ -9,6 +9,7 @@ from atlas_code_api import build_code_router
 from atlas_automation_api import build_automation_router
 from atlas_automation_executions_api import build_automation_executions_router
 from atlas_integrations_status_api import build_integrations_status_router
+from atlas_client_error_api import build_client_error_router
 
 api = atlas.api
 
@@ -41,6 +42,14 @@ async def atlas_pwa_cache_policy(request, call_next):
 
     return response
 
+
+# Authenticated browser-side exception telemetry. Only short redacted metadata
+# is logged, never credentials or application storage.
+api.include_router(
+    build_client_error_router(
+        verify_request=atlas.verify_app_request,
+    )
+)
 
 # General authenticated executor, including Claude.
 api.include_router(
