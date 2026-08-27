@@ -1,4 +1,5 @@
 import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,14 @@ class BrowserSessionStoreTests(unittest.TestCase):
             self.assertIn("shopify", store.list_names())
             self.assertTrue(store.delete("shopify"))
             self.assertFalse(store.exists("shopify"))
+
+    def test_root_permissions_are_restricted(self):
+        with tempfile.TemporaryDirectory() as parent:
+            root = Path(parent) / "sessions"
+            root.mkdir(mode=0o777)
+            os.chmod(root, 0o777)
+            BrowserSessionStore(root=str(root), key="test-key")
+            self.assertEqual(stat.S_IMODE(root.stat().st_mode), 0o700)
 
     def test_wrong_key_cannot_decrypt(self):
         with tempfile.TemporaryDirectory() as root:
