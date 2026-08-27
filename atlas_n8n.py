@@ -152,7 +152,7 @@ def _matches_schema_type(value, expected: str) -> bool:
         return isinstance(value, dict)
     if expected == "null":
         return value is None
-    return True
+    return False
 
 
 def _matches_declared_type(value, expected) -> bool:
