@@ -53,6 +53,12 @@ class NavStateModeTests(unittest.TestCase):
         source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
         self.assertIn("collapseSidebar();$('#atlasSidebarToggle')?.focus()", source)
 
+    def test_open_mobile_sidebar_moves_focus_into_navigation(self):
+        source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
+        self.assertIn("sidebarOpenState!==open", source)
+        self.assertIn("document.activeElement===t", source)
+        self.assertIn("$('#atlasRefNav .ref-nav-item')?.focus()", source)
+
     def test_sidebar_toggle_accessibility_state_tracks_open_class(self):
         source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
         self.assertIn("function syncSidebarToggle()", source)
