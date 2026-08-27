@@ -71,6 +71,20 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
                 ):
                     issues.append(f"malformed_workflow_node_type_version:{name}")
 
+            if "position" in node:
+                position = node.get("position")
+                if (
+                    not isinstance(position, list)
+                    or len(position) != 2
+                    or any(
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(float(value))
+                        for value in position
+                    )
+                ):
+                    issues.append(f"malformed_workflow_node_position:{name}")
+
             if "disabled" in node and not isinstance(node.get("disabled"), bool):
                 issues.append(f"malformed_workflow_node_disabled:{name}")
 
