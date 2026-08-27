@@ -20,8 +20,17 @@ class NavStateModeTests(unittest.TestCase):
         self.assertIn("AtlasToolsCenter", source)
         self.assertIn("AtlasTemplates", source)
         self.assertIn("AtlasIntegrations", source)
+        self.assertIn("AtlasSettingsCenter", source)
         self.assertIn("tapTab('projects')", source)
         self.assertIn("tapTab('files')", source)
+
+    def test_centers_are_mutually_exclusive(self):
+        source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
+        self.assertIn("AtlasSettingsCenter?.close", source)
+        self.assertIn("AtlasToolsCenter?.close", source)
+        self.assertIn("AtlasTemplates?.close", source)
+        self.assertIn("AtlasIntegrations?.close", source)
+        self.assertIn(".atlas-settings-overlay", source)
 
     def test_focus_chat_css_removes_dashboard_noise(self):
         css = (ROOT / "web" / "nav-state.css").read_text(encoding="utf-8")
