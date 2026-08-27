@@ -8,6 +8,8 @@
     'atlas_response_id',
     'atlas_active_job_id',
     'atlas_safe_job_recovery',
+    'atlas_chat_threads',
+    'atlas_active_thread_id',
   ]);
   const rawGet = Storage.prototype.getItem;
   const rawSet = Storage.prototype.setItem;
