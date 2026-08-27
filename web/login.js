@@ -9,7 +9,7 @@ function focusInput(){
   try{input.focus({preventScroll:true})}catch{try{input.focus()}catch{}}
 }
 function openAtlas(){
-  window.location.replace('/app/safe.html?login='+Date.now());
+  window.location.replace('/?stable=2&login='+Date.now());
 }
 
 input.addEventListener('pointerdown',()=>setTimeout(focusInput,0),{passive:true});
