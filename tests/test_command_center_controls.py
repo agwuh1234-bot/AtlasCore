@@ -25,6 +25,11 @@ class CommandCenterControlsTests(unittest.TestCase):
         self.assertIn("metaKey", source)
         self.assertIn("ctrlKey", source)
 
+    def test_project_search_falls_back_when_local_storage_is_unavailable(self):
+        source = (ROOT / "web" / "project-search.js").read_text(encoding="utf-8")
+        self.assertIn("const project=()=>{try{return localStorage.getItem(ACTIVE)||'project-general'}catch{return'project-general'}}", source)
+        self.assertNotIn("const project=()=>localStorage.getItem(ACTIVE)||'project-general'", source)
+
     def test_project_search_restores_full_thread_continuation_context(self):
         source = (ROOT / "web" / "project-search.js").read_text(encoding="utf-8")
         self.assertIn("function restoreThreadContext(item)", source)
