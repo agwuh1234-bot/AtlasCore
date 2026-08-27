@@ -58,6 +58,26 @@ class BrowserSessionStore:
         finally:
             os.close(fd)
 
+    def _fsync_root_directory(self) -> None:
+        """Persist directory metadata for the completed atomic rename."""
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory = getattr(os, "O_DIRECTORY", 0)
+        if not nofollow or not directory:
+            raise BrowserSessionError("Secure session directory sync is unavailable on this platform")
+        try:
+            fd = os.open(self.root, os.O_RDONLY | nofollow | directory)
+        except OSError as exc:
+            raise BrowserSessionError("Session directory cannot be opened safely for sync") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode):
+                raise BrowserSessionError("Session directory is invalid")
+            os.fsync(fd)
+        except OSError as exc:
+            raise BrowserSessionError("Session directory could not be synced") from exc
+        finally:
+            os.close(fd)
+
     @classmethod
     def _safe_name(cls, name: str) -> str:
         normalized = name.lower().strip()
@@ -149,6 +169,9 @@ class BrowserSessionStore:
             # would reopen a symlink-swap race after the atomic replacement.
             os.replace(tmp_path, path)
             tmp_path = None
+            # fsync(file) persists the encrypted bytes; fsync(directory) persists the
+            # rename itself, so a host crash cannot silently roll back the session name.
+            self._fsync_root_directory()
         finally:
             if fd >= 0:
                 os.close(fd)
