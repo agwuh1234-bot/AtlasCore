@@ -57,6 +57,7 @@ class IntegrationsCenterTests(unittest.TestCase):
         self.assertIn("get('/app-code/status')", source)
         self.assertIn("get('/app-automation/status')", source)
         self.assertIn("get('/health')", source)
+        self.assertIn('.ref-nav-item,.dash-side-nav-item', source)
 
 
 if __name__ == "__main__":
