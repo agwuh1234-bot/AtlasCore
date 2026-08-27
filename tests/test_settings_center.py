@@ -29,10 +29,12 @@ class SettingsCenterTests(unittest.TestCase):
             self.assertIn(selector, source)
         self.assertIn("AtlasIntegrations", source)
 
-    def test_destructive_session_actions_require_confirmation(self):
+    def test_destructive_session_actions_use_atlas_confirmation(self):
         source = (ROOT / "web" / "settings-center.js").read_text(encoding="utf-8")
-        self.assertIn("confirm('Очистить историю текущего чата?')", source)
-        self.assertIn("confirm('Выйти из Atlas?')", source)
+        self.assertIn("window.AtlasDialog?.confirm", source)
+        self.assertIn("title:'Очистить историю?'", source)
+        self.assertIn("title:'Выйти из Atlas?'", source)
+        self.assertIn("danger:true", source)
 
     def test_settings_dialog_moves_and_restores_focus(self):
         source = (ROOT / "web" / "settings-center.js").read_text(encoding="utf-8")
