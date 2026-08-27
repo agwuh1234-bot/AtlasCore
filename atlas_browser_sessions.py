@@ -57,6 +57,10 @@ class BrowserSessionStore:
         if path.is_symlink():
             raise BrowserSessionError("Session path must not be a symlink")
 
+    @staticmethod
+    def _restrict_file_permissions(path: Path) -> None:
+        os.chmod(path, 0o600)
+
     def exists(self, name: str) -> bool:
         path = self._path(name)
         self._reject_symlink(path)
@@ -80,6 +84,7 @@ class BrowserSessionStore:
                 os.fsync(handle.fileno())
             os.replace(tmp_path, path)
             tmp_path = None
+            self._restrict_file_permissions(path)
         finally:
             if fd >= 0:
                 os.close(fd)
@@ -94,6 +99,7 @@ class BrowserSessionStore:
         self._reject_symlink(path)
         if not path.is_file():
             raise BrowserSessionError("Session not found")
+        self._restrict_file_permissions(path)
         try:
             raw = self.cipher.decrypt(path.read_bytes())
             value = json.loads(raw.decode("utf-8"))
