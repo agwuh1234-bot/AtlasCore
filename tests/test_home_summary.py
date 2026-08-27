@@ -29,6 +29,14 @@ class HomeSummaryTests(unittest.TestCase):
         self.assertIn('atlas-home-summary.compact', css)
         self.assertIn('body.atlas-chat-focus .atlas-home-summary', css)
 
+    def test_home_summary_refreshes_from_live_workspace_changes(self):
+        source = (ROOT / "web" / "home-summary.js").read_text(encoding="utf-8")
+        self.assertIn("atlas-files-changed", source)
+        self.assertIn("atlas-dashboard-live", source)
+        self.assertIn("visibilitychange", source)
+        self.assertIn("lastHydrated", source)
+        self.assertIn("45000", source)
+
     def test_home_actions_route_to_real_controls(self):
         source = (ROOT / "web" / "home-summary.js").read_text(encoding="utf-8")
         self.assertIn("requestSubmit", source)
