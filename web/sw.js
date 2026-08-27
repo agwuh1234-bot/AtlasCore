@@ -36,6 +36,17 @@ function isAuthEntrypoint(pathname) {
     || pathname === '/app/login.css';
 }
 
+function safeNotificationTarget(rawTarget) {
+  if (typeof rawTarget !== 'string' || !rawTarget.trim()) return '/';
+  try {
+    const parsed = new URL(rawTarget, self.location.origin);
+    if (parsed.origin !== self.location.origin) return '/';
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/';
+  } catch {
+    return '/';
+  }
+}
+
 async function fetchFresh(request) {
   return fetch(new Request(request, { cache: 'no-store' }));
 }
@@ -123,7 +134,7 @@ self.addEventListener('push', (event) => {
     icon: '/app/icon.svg',
     badge: '/app/icon.svg',
     tag: payload.tag || 'atlas-done',
-    data: { url: payload.url || '/' },
+    data: { url: safeNotificationTarget(payload.url) },
   }));
 });
 
@@ -131,7 +142,7 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      const target = (event.notification.data && event.notification.data.url) || '/';
+      const target = safeNotificationTarget(event.notification.data && event.notification.data.url);
       if (list.length > 0) {
         const client = list[0];
         return client.focus().then(() => client.navigate ? client.navigate(target) : client);
