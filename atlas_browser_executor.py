@@ -73,6 +73,11 @@ class BrowserExecutor:
                 raise BrowserExecutorError("Local/private targets are blocked")
         return url
 
+    @classmethod
+    def _validate_page_location(cls, page: Any) -> str:
+        """Re-check the browser's actual location after navigation/redirects."""
+        return cls._validate_public_url(str(page.url))
+
     async def run(
         self,
         *,
@@ -114,6 +119,7 @@ class BrowserExecutor:
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout_ms)
                 await page.goto(start_url, wait_until="domcontentloaded")
+                self._validate_page_location(page)
                 log.append({"type": "goto", "url": page.url, "at": time.time()})
 
                 for index, action in enumerate(actions, 1):
@@ -153,8 +159,10 @@ class BrowserExecutor:
                         path.write_text(text[:200_000], encoding="utf-8")
                         artifacts.append(BrowserArtifact("text", str(path)))
                         entry.update(selector=selector, chars=min(len(text), 200_000))
+                    self._validate_page_location(page)
                     log.append(entry)
 
+                self._validate_page_location(page)
                 if save_session and session_name and self.session_store:
                     self.session_store.save(session_name, await context.storage_state(indexed_db=True))
                     log.append({"type": "session_save", "name": session_name, "at": time.time()})
