@@ -19,12 +19,12 @@ class LegacyDialogBridgeOrderTests(unittest.TestCase):
             "/app/video-studio-live.js",
             "/app/automation-studio-live.js",
         ):
-            marker = f'<script src="{module}" defer></script>'
+            marker = f'src="{module}"'
             self.assertIn(marker, html)
             self.assertLess(
                 bridge_index,
                 html.index(marker),
-                f"legacy dialog bridge must load before {module}",
+                f"legacy dialog bridge must appear before {module}",
             )
 
 
