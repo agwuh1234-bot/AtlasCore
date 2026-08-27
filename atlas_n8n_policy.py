@@ -14,6 +14,7 @@ READ_PREFIXES = (
 READ_SUFFIXES = ("_get", "_list", "_search", "_find", "_read", "_status", "_health")
 DESTRUCTIVE_MARKERS = (
     "delete", "remove", "destroy", "purge", "drop", "deactivate", "disable", "archive",
+    "reset", "clear", "revoke", "terminate", "cancel",
 )
 WRITE_MARKERS = (
     "create", "update", "edit", "write", "save", "activate", "enable", "execute", "run",
