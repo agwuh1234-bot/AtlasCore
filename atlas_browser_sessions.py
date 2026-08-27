@@ -86,14 +86,14 @@ class BrowserSessionStore:
         if info.st_nlink != 1:
             raise BrowserSessionError("Session path must not be hardlinked")
 
-    @classmethod
-    def _open_session_for_read(cls, path: Path) -> int:
+    def _open_session_for_read(self, path: Path) -> int:
         """Open a session without following a last-moment symlink swap.
 
         The lstat checks used elsewhere are useful for validation, but load() handles
         authentication material and must avoid a check-then-open race. O_NOFOLLOW
         binds the validation to the file descriptor actually read; fstat then repeats
-        the regular-file/hardlink checks on that exact inode.
+        the regular-file/hardlink checks on that exact inode. Instance limits are
+        intentionally honored so configured/test limits are enforced before any read.
         """
         flags = os.O_RDONLY
         nofollow = getattr(os, "O_NOFOLLOW", 0)
@@ -111,7 +111,7 @@ class BrowserSessionStore:
                 raise BrowserSessionError("Session path must be a regular file")
             if info.st_nlink != 1:
                 raise BrowserSessionError("Session path must not be hardlinked")
-            if info.st_size > cls._MAX_ENCRYPTED_BYTES:
+            if info.st_size > self._MAX_ENCRYPTED_BYTES:
                 raise BrowserSessionError("Session state is too large")
             os.fchmod(fd, 0o600)
             return fd
