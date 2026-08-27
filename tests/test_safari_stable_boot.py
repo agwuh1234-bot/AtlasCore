@@ -39,6 +39,22 @@ class SafariStableBootTests(unittest.TestCase):
         self.assertNotIn('serviceWorker.register', runtime)
         self.assertNotIn('serviceWorker.register', app)
 
+    def test_background_resume_does_not_repeat_worker_cleanup_or_leak_guards(self):
+        runtime = (ROOT / 'web' / 'runtime-refresh.js').read_text(encoding='utf-8')
+        self.assertIn("window.addEventListener('pagehide'", runtime)
+        self.assertIn('stopHealthLoop()', runtime)
+        self.assertIn('pageshow-bfcache', runtime)
+        self.assertIn('dataset.atlasLoginGuard', runtime)
+        self.assertIn('cleanupStarted', runtime)
+        self.assertNotIn("pageshow',()=>{installLoginGuard();void health();void removeAtlasWorkers()", runtime)
+
+    def test_diagnostic_mode_traces_safari_lifecycle(self):
+        telemetry = (ROOT / 'web' / 'client-telemetry.js').read_text(encoding='utf-8')
+        self.assertIn("lifecycle.pagehide", telemetry)
+        self.assertIn("lifecycle.pageshow", telemetry)
+        self.assertIn("lifecycle.hidden", telemetry)
+        self.assertIn("lifecycle.visible", telemetry)
+
     def test_feature_styles_remain_lazy_until_opened(self):
         html = (ROOT / 'web' / 'index.html').read_text(encoding='utf-8')
         loader = (ROOT / 'web' / 'style-loader.js').read_text(encoding='utf-8')
