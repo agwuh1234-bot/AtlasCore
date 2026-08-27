@@ -1,0 +1,26 @@
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const E={dot:$('dot'),status:$('status'),project:$('project'),chat:$('chat'),form:$('composer'),input:$('message'),send:$('send'),notice:$('notice'),newChat:$('newChat'),full:$('fullAtlas')};
+let projectId='project-general',responseId='',activeJob='',busy=false,history=[];
+const key=(suffix)=>`atlas_safe_${suffix}::${projectId}`;
+const save=()=>{try{localStorage.setItem(key('history'),JSON.stringify(history.slice(-100)));responseId?localStorage.setItem(key('rid'),responseId):localStorage.removeItem(key('rid'));activeJob?localStorage.setItem(key('job'),activeJob):localStorage.removeItem(key('job'))}catch{}};
+const load=()=>{try{history=JSON.parse(localStorage.getItem(key('history'))||'[]')||[]}catch{history=[]}responseId=localStorage.getItem(key('rid'))||'';activeJob=localStorage.getItem(key('job'))||'';render()};
+const notify=(text='')=>{E.notice.textContent=text;E.notice.classList.toggle('show',!!text)};
+const setOnline=on=>{E.dot.classList.toggle('on',!!on);E.status.textContent=on?'online':'offline'};
+const scroll=()=>{document.querySelector('.main').scrollTop=document.querySelector('.main').scrollHeight};
+function render(){E.chat.textContent='';if(!history.length){E.chat.innerHTML='<div class="empty"><div class="a">A</div><h1>Atlas Safe Mode</h1><p>Рабочий чат без тяжёлого интерфейса. Использует тот же backend и проекты Atlas.</p></div>';return}for(const m of history){const r=document.createElement('div');r.className='row '+(m.role==='user'?'user':'assistant');const b=document.createElement('div');b.className='bubble';b.textContent=m.text||'';r.appendChild(b);E.chat.appendChild(r)}scroll()}
+const push=(role,text)=>{history.push({role,text});save();render()};
+const setBusy=on=>{busy=!!on;E.send.disabled=busy;E.input.disabled=busy};
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function checkSession(){try{const r=await fetch('/app-session?safe='+Date.now(),{cache:'no-store',credentials:'same-origin'});const j=await r.json();if(!j.authenticated){location.replace('/app/login.html?v='+Date.now());return false}return true}catch{notify('Нет соединения с Atlas');return false}}
+async function loadProjects(){try{const r=await fetch('/app-projects',{cache:'no-store',credentials:'same-origin'});if(r.status===401){location.replace('/app/login.html?v='+Date.now());return}const j=await r.json();const projects=Array.isArray(j.projects)?j.projects:[];E.project.textContent='';for(const p of projects){const o=document.createElement('option');o.value=p.id;o.textContent=p.name||p.id;E.project.appendChild(o)}const preferred=localStorage.getItem('atlas_active_project_id');if(preferred&&projects.some(p=>p.id===preferred))projectId=preferred;else if(projects[0])projectId=projects[0].id;E.project.value=projectId;load()}catch{notify('Не удалось загрузить проекты')}}
+async function health(){try{const r=await fetch('/health?safe='+Date.now(),{cache:'no-store'});setOnline(r.ok)}catch{setOnline(false)}}
+async function poll(jobId){setBusy(true);try{while(activeJob===jobId){const r=await fetch('/app-jobs/'+encodeURIComponent(jobId),{cache:'no-store',credentials:'same-origin'});if(r.status===401){location.replace('/app/login.html?v='+Date.now());return}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||j.error||'Ошибка Atlas');if(j.status==='done'){responseId=j.response_id||responseId;activeJob='';push('assistant',String(j.answer||''));return}if(j.status==='error')throw new Error(j.error||'Ошибка Atlas');if(j.status==='cancelled'){activeJob='';push('assistant','Задача остановлена.');return}await wait(1200)}}catch(e){activeJob='';push('assistant',e?.message||'Ошибка Atlas')}finally{setBusy(false);save()}}
+async function send(){const text=(E.input.value||'').trim();if(!text||busy)return;notify('');push('user',text);E.input.value='';setBusy(true);try{const r=await fetch('/app-jobs',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({task:text,previous_response_id:responseId||null,project_id:projectId,allow_writes:false,claude_review:false,attachments:[]})});if(r.status===401){location.replace('/app/login.html?v='+Date.now());return}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||j.error||'Ошибка Atlas');activeJob=j.job_id;save();await poll(activeJob)}catch(e){push('assistant',e?.message||'Ошибка Atlas');setBusy(false)}}
+E.form.addEventListener('submit',e=>{e.preventDefault();void send()});
+E.input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send()}});
+E.project.addEventListener('change',()=>{save();projectId=E.project.value||'project-general';try{localStorage.setItem('atlas_active_project_id',projectId)}catch{}load();if(activeJob)void poll(activeJob)});
+E.newChat.addEventListener('click',()=>{history=[];responseId='';activeJob='';save();render();E.input.focus()});
+E.full.addEventListener('click',()=>location.assign('/?full=1&t='+Date.now()));
+(async()=>{if(!await checkSession())return;await health();await loadProjects();if(activeJob)void poll(activeJob);setInterval(health,15000);setTimeout(()=>E.input.focus(),250)})();
+})();
