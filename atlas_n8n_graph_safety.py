@@ -27,22 +27,7 @@ def connection_count(body: dict[str, Any], source: str, target: str) -> int:
 
 
 def connection_shape_issues(body: dict[str, Any]) -> list[str]:
-    """Return stable fail-closed issue keys for unsupported/malformed n8n edges.
-
-    Atlas write operations currently model only the canonical n8n connection form:
-    a string source, ``main`` output type, output branch 0, string target,
-    ``main`` edge type and target input index 0. Anything else is deliberately
-    surfaced instead of being silently normalized or guessed at. Exact duplicate
-    physical edges are also rejected globally because one-shot repair operations
-    cannot safely infer which duplicate instance should be retained or removed.
-
-    When a workflow node list is available, connection endpoints must also refer
-    to real uniquely-named nodes. Duplicate node names are rejected because n8n
-    connections address nodes by name, making repair targets ambiguous. Malformed
-    node entries and safety-relevant node metadata are surfaced rather than
-    ignored so they cannot weaken endpoint validation or silently change whether
-    a node is executable.
-    """
+    """Return stable fail-closed issue keys for unsupported/malformed n8n edges."""
     connections = body.get("connections")
     if not isinstance(connections, dict):
         return ["malformed_connections"]
@@ -66,14 +51,15 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
             if not isinstance(node_type, str) or not node_type:
                 issues.append(f"malformed_workflow_node_type:{name}")
 
-            type_version = node.get("typeVersion")
-            if (
-                isinstance(type_version, bool)
-                or not isinstance(type_version, (int, float))
-                or not math.isfinite(float(type_version))
-                or type_version <= 0
-            ):
-                issues.append(f"malformed_workflow_node_type_version:{name}")
+            if "typeVersion" in node:
+                type_version = node.get("typeVersion")
+                if (
+                    isinstance(type_version, bool)
+                    or not isinstance(type_version, (int, float))
+                    or not math.isfinite(float(type_version))
+                    or type_version <= 0
+                ):
+                    issues.append(f"malformed_workflow_node_type_version:{name}")
 
             if "disabled" in node and not isinstance(node.get("disabled"), bool):
                 issues.append(f"malformed_workflow_node_disabled:{name}")
@@ -118,9 +104,7 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
 
                     unexpected_keys = sorted(str(key) for key in edge.keys() if key not in {"node", "type", "index"})
                     if unexpected_keys:
-                        issues.append(
-                            f"unsupported_connection_edge_metadata:{source}:{','.join(unexpected_keys)}"
-                        )
+                        issues.append(f"unsupported_connection_edge_metadata:{source}:{','.join(unexpected_keys)}")
 
                     target = edge.get("node")
                     if not isinstance(target, str) or not target:
