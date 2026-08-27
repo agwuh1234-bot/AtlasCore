@@ -209,9 +209,12 @@ class BrowserSessionStore:
     def delete(self, name: str) -> bool:
         path = self._path(name)
         self._reject_unsafe_existing_file(path)
-        if not path.exists():
+        if not self._safe_regular_file_exists(path):
             return False
-        path.unlink()
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return False
         self._fsync_root_directory()
         return True
 
