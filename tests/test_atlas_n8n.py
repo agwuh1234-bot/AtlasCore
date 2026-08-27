@@ -39,6 +39,21 @@ class N8NBridgeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "not an allowed value"):
             atlas_n8n._validate_arguments_against_schema({"mode": "danger"}, schema)
 
+    def test_schema_validation_supports_union_types_and_const(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "cursor": {"type": ["string", "null"]},
+                "mode": {"type": "string", "const": "safe"},
+            },
+        }
+        atlas_n8n._validate_arguments_against_schema({"cursor": None, "mode": "safe"}, schema)
+        atlas_n8n._validate_arguments_against_schema({"cursor": "next", "mode": "safe"}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "cursor must be string or null"):
+            atlas_n8n._validate_arguments_against_schema({"cursor": 5, "mode": "safe"}, schema)
+        with self.assertRaisesRegex(atlas_n8n.N8NBridgeError, "does not match const"):
+            atlas_n8n._validate_arguments_against_schema({"cursor": None, "mode": "unsafe"}, schema)
+
     def test_schema_validation_rejects_undeclared_fields_when_forbidden(self):
         schema = {
             "type": "object",
