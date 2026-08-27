@@ -21,6 +21,14 @@ class HomeSummaryTests(unittest.TestCase):
         self.assertIn('/app-integrations/status', source)
         self.assertIn('atlas-home-summary', source)
 
+    def test_home_summary_stays_available_with_chat_history(self):
+        source = (ROOT / "web" / "home-summary.js").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "home-summary.css").read_text(encoding="utf-8")
+        self.assertIn('list.prepend(card)', source)
+        self.assertIn(".row.user,.row.assistant", source)
+        self.assertIn('atlas-home-summary.compact', css)
+        self.assertIn('body.atlas-chat-focus .atlas-home-summary', css)
+
     def test_home_actions_route_to_real_controls(self):
         source = (ROOT / "web" / "home-summary.js").read_text(encoding="utf-8")
         self.assertIn("requestSubmit", source)
