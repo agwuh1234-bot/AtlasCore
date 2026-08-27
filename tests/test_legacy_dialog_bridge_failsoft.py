@@ -9,9 +9,14 @@ class LegacyDialogBridgeFailSoftTests(unittest.TestCase):
     def test_custom_dialog_confirm_and_prompt_have_native_fallbacks(self):
         source = (ROOT / "web" / "legacy-dialog-bridge.js").read_text(encoding="utf-8")
         self.assertIn("try{return await window.AtlasDialog.confirm(options)}catch(_err){}", source)
-        self.assertIn("return window.confirm(fallback)", source)
+        self.assertIn("return nativeConfirm(fallback)", source)
         self.assertIn("try{return await window.AtlasDialog.prompt(options)}catch(_err){}", source)
-        self.assertIn("return window.prompt(fallback,value)", source)
+        self.assertIn("return nativePrompt(fallback,value)", source)
+
+    def test_native_dialog_failures_cancel_safely(self):
+        source = (ROOT / "web" / "legacy-dialog-bridge.js").read_text(encoding="utf-8")
+        self.assertIn("function nativeConfirm(fallback){try{return window.confirm(fallback)}catch(_err){return false}}", source)
+        self.assertIn("function nativePrompt(fallback,value=''){try{return window.prompt(fallback,value)}catch(_err){return null}}", source)
 
     def test_synthetic_clicks_clear_stale_bypass_flags(self):
         source = (ROOT / "web" / "legacy-dialog-bridge.js").read_text(encoding="utf-8")
