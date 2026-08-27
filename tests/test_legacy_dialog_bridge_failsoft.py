@@ -24,8 +24,18 @@ class LegacyDialogBridgeFailSoftTests(unittest.TestCase):
         self.assertIn("const PENDING=new WeakSet()", source)
         self.assertIn("if(PENDING.has(button))return false", source)
         self.assertIn("PENDING.add(button)", source)
-        self.assertIn("finally{PENDING.delete(button)}", source)
+        self.assertIn("PENDING.delete(button)", source)
         self.assertIn("void guardedHandle(button)", source)
+
+    def test_pending_dialog_state_is_exposed_and_cleared_for_assistive_tech(self):
+        source = (ROOT / "web" / "legacy-dialog-bridge.js").read_text(encoding="utf-8")
+        self.assertIn("function markPending(button,pending)", source)
+        self.assertIn("button.setAttribute('aria-busy','true')", source)
+        self.assertIn("button.setAttribute('aria-disabled','true')", source)
+        self.assertIn("button.removeAttribute('aria-busy')", source)
+        self.assertIn("button.removeAttribute('aria-disabled')", source)
+        self.assertIn("markPending(button,true)", source)
+        self.assertIn("finally{markPending(button,false);PENDING.delete(button)}", source)
 
 
 if __name__ == "__main__":
