@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from atlas_n8n import N8NBridgeError, call_tool, configured, list_tools
 from atlas_n8n_policy import decision, preflight
+from atlas_safe_logging import sanitize_for_log
 
 
 class N8NPreflightRequest(BaseModel):
@@ -76,7 +77,8 @@ def _redact_result(value, *, depth: int = 0):
 
 
 def _bounded_text(text: object) -> str:
-    value = str(text)
+    sanitized = sanitize_for_log(str(text))
+    value = sanitized if isinstance(sanitized, str) else str(sanitized)
     if len(value) <= _MAX_TEXT_RESULT:
         return value
     return value[:_MAX_TEXT_RESULT] + "...[TRUNCATED]"
