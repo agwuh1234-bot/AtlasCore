@@ -37,7 +37,9 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
 
     When a workflow node list is available, connection endpoints must also refer
     to real uniquely-named nodes. Duplicate node names are rejected because n8n
-    connections address nodes by name, making repair targets ambiguous.
+    connections address nodes by name, making repair targets ambiguous. Malformed
+    node entries are surfaced rather than ignored so they cannot weaken endpoint
+    validation by disappearing from the known-node set.
     """
     connections = body.get("connections")
     if not isinstance(connections, dict):
@@ -48,12 +50,15 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
     raw_nodes = body.get("nodes")
     if isinstance(raw_nodes, list):
         node_name_counts: dict[str, int] = {}
-        for node in raw_nodes:
+        for node_index, node in enumerate(raw_nodes):
             if not isinstance(node, dict):
+                issues.append(f"malformed_workflow_node:{node_index}")
                 continue
             name = node.get("name")
-            if isinstance(name, str) and name:
-                node_name_counts[name] = node_name_counts.get(name, 0) + 1
+            if not isinstance(name, str) or not name:
+                issues.append(f"malformed_workflow_node_name:{node_index}")
+                continue
+            node_name_counts[name] = node_name_counts.get(name, 0) + 1
         known_nodes = set(node_name_counts)
         for name, count in node_name_counts.items():
             if count > 1:
