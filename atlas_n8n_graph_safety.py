@@ -74,6 +74,12 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
             if "disabled" in node and not isinstance(node.get("disabled"), bool):
                 issues.append(f"malformed_workflow_node_disabled:{name}")
 
+            if "parameters" in node and not isinstance(node.get("parameters"), dict):
+                issues.append(f"malformed_workflow_node_parameters:{name}")
+
+            if "credentials" in node and not isinstance(node.get("credentials"), dict):
+                issues.append(f"malformed_workflow_node_credentials:{name}")
+
         known_nodes = set(node_name_counts)
         for name, count in node_name_counts.items():
             if count > 1:
