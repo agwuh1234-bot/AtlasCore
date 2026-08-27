@@ -100,6 +100,13 @@
     window.alert(message || 'Не удалось выполнить действие.');
   }
 
+  async function askText(options, fallbackMessage, fallbackValue = '') {
+    if (window.AtlasDialog?.prompt) {
+      return await window.AtlasDialog.prompt(options);
+    }
+    return window.prompt(fallbackMessage, fallbackValue);
+  }
+
   async function jsonRequest(url, options) {
     const response = await window.fetch(url, options);
     const data = await response.json().catch(() => ({}));
@@ -180,7 +187,16 @@
   }
 
   async function createProject() {
-    const name = window.prompt('Название нового проекта');
+    const name = await askText({
+      eyebrow: 'ATLAS · PROJECTS',
+      title: 'Новый проект',
+      message: 'У проекта будут отдельные чаты, память, файлы и задачи.',
+      label: 'Название проекта',
+      placeholder: 'Например, Shopify Launch',
+      confirmLabel: 'Создать',
+      cancelLabel: 'Отмена',
+      maxLength: 80,
+    }, 'Название нового проекта');
     if (!name || !name.trim()) return;
     try {
       const data = await jsonRequest('/app-projects', {
@@ -197,7 +213,16 @@
   }
 
   async function rememberForProject() {
-    const content = window.prompt('Что Atlas должен помнить в этом проекте?');
+    const content = await askText({
+      eyebrow: 'ATLAS · MEMORY',
+      title: 'Запомнить для проекта',
+      message: 'Сохраняйте устойчивые решения, цели и контекст. Секреты и API-ключи не добавляйте.',
+      label: 'Память',
+      placeholder: 'Что Atlas должен помнить?',
+      confirmLabel: 'Запомнить',
+      cancelLabel: 'Отмена',
+      maxLength: 200,
+    }, 'Что Atlas должен помнить в этом проекте?');
     if (!content || !content.trim()) return;
     try {
       await jsonRequest('/app-projects/' + encodeURIComponent(activeProject) + '/memory', {
