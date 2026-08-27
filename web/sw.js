@@ -47,6 +47,11 @@ function safeNotificationTarget(rawTarget) {
   }
 }
 
+function boundedNotificationText(value, fallback, maxLength) {
+  const text = typeof value === 'string' && value.trim() ? value.trim() : fallback;
+  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text;
+}
+
 async function fetchFresh(request) {
   return fetch(new Request(request, { cache: 'no-store' }));
 }
@@ -129,13 +134,16 @@ self.addEventListener('push', (event) => {
   } catch {
     if (event.data) payload.body = event.data.text();
   }
-  event.waitUntil(self.registration.showNotification(payload.title || 'Atlas', {
-    body: payload.body || 'Задача выполнена',
-    icon: '/app/icon.svg',
-    badge: '/app/icon.svg',
-    tag: payload.tag || 'atlas-done',
-    data: { url: safeNotificationTarget(payload.url) },
-  }));
+  event.waitUntil(self.registration.showNotification(
+    boundedNotificationText(payload.title, 'Atlas', 80),
+    {
+      body: boundedNotificationText(payload.body, 'Задача выполнена', 300),
+      icon: '/app/icon.svg',
+      badge: '/app/icon.svg',
+      tag: boundedNotificationText(payload.tag, 'atlas-done', 80),
+      data: { url: safeNotificationTarget(payload.url) },
+    }
+  ));
 });
 
 self.addEventListener('notificationclick', (event) => {
