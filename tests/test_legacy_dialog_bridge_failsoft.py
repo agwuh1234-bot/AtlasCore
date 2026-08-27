@@ -32,10 +32,18 @@ class LegacyDialogBridgeFailSoftTests(unittest.TestCase):
         self.assertIn("function markPending(button,pending)", source)
         self.assertIn("button.setAttribute('aria-busy','true')", source)
         self.assertIn("button.setAttribute('aria-disabled','true')", source)
-        self.assertIn("button.removeAttribute('aria-busy')", source)
-        self.assertIn("button.removeAttribute('aria-disabled')", source)
         self.assertIn("markPending(button,true)", source)
         self.assertIn("finally{markPending(button,false);PENDING.delete(button)}", source)
+
+    def test_pending_dialog_restores_preexisting_accessibility_attributes(self):
+        source = (ROOT / "web" / "legacy-dialog-bridge.js").read_text(encoding="utf-8")
+        self.assertIn("const PENDING_A11Y=new WeakMap()", source)
+        self.assertIn("busy:button.getAttribute('aria-busy')", source)
+        self.assertIn("disabled:button.getAttribute('aria-disabled')", source)
+        self.assertIn("function restoreAttr(button,name,value)", source)
+        self.assertIn("restoreAttr(button,'aria-busy',previous.busy)", source)
+        self.assertIn("restoreAttr(button,'aria-disabled',previous.disabled)", source)
+        self.assertIn("PENDING_A11Y.delete(button)", source)
 
 
 if __name__ == "__main__":
