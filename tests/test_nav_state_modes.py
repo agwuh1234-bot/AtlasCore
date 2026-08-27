@@ -49,6 +49,10 @@ class NavStateModeTests(unittest.TestCase):
         self.assertIn("classList.contains('atlas-sidebar-open')", source)
         self.assertIn("collapseSidebar()", source)
 
+    def test_escape_restores_focus_to_sidebar_toggle(self):
+        source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
+        self.assertIn("collapseSidebar();$('#atlasSidebarToggle')?.focus()", source)
+
     def test_sidebar_toggle_accessibility_state_tracks_open_class(self):
         source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
         self.assertIn("function syncSidebarToggle()", source)
