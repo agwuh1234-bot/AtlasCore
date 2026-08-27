@@ -26,6 +26,21 @@ class ProjectSwitcherLiveTests(unittest.TestCase):
         self.assertIn("Проекты", source)
         self.assertIn("stopImmediatePropagation", source)
 
+    def test_shared_project_link_is_validated_against_real_project_list(self):
+        source = (ROOT / "web" / "project-switcher-live.js").read_text(encoding="utf-8")
+        self.assertIn("PROJECT_PARAM='project'", source)
+        self.assertIn("function consumeSharedProject()", source)
+        self.assertIn("list.find(p=>idOf(p)===target)", source)
+        self.assertIn("clearRequestedProject()", source)
+        self.assertIn("e?.status===401", source)
+        self.assertNotIn("localStorage.setItem(ACTIVE,requestedProject()", source)
+
+    def test_shared_project_link_retries_after_login(self):
+        source = (ROOT / "web" / "project-switcher-live.js").read_text(encoding="utf-8")
+        self.assertIn("const login=$('#loginBtn')", source)
+        self.assertIn("setTimeout(consumeSharedProject,700)", source)
+        self.assertIn("setTimeout(consumeSharedProject,1800)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
