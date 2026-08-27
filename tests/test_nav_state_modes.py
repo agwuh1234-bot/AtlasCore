@@ -59,6 +59,16 @@ class NavStateModeTests(unittest.TestCase):
         self.assertIn("document.activeElement===t", source)
         self.assertIn("$('#atlasRefNav .ref-nav-item')?.focus()", source)
 
+    def test_open_mobile_sidebar_traps_tab_focus(self):
+        source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
+        self.assertIn("function trapSidebarTab(e)", source)
+        self.assertIn("e.key!=='Tab'", source)
+        self.assertIn("const side=$('#atlasSidebar')", source)
+        self.assertIn("side.contains(active)", source)
+        self.assertIn("e.shiftKey", source)
+        self.assertIn("first.focus()", source)
+        self.assertIn("last.focus()", source)
+
     def test_sidebar_toggle_accessibility_state_tracks_open_class(self):
         source = (ROOT / "web" / "nav-state.js").read_text(encoding="utf-8")
         self.assertIn("function syncSidebarToggle()", source)
