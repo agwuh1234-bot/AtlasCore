@@ -35,6 +35,14 @@ class RepairShapeGateTests(unittest.TestCase):
             plan["remaining_issues"],
         )
 
+    def test_malformed_nodes_collection_blocks_all_repairs(self):
+        body = workflow()
+        body["nodes"] = {"unexpected": "mapping"}
+        plan = plan_safe_ecom_repair(body)
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["operations"], [])
+        self.assertIn("malformed_nodes", plan["remaining_issues"])
+
 
 if __name__ == "__main__":
     unittest.main()
