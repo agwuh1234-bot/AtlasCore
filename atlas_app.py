@@ -7,6 +7,7 @@ from atlas_executor_api import build_executor_router
 from atlas_n8n_executor import build_n8n_executor_router
 from atlas_code_api import build_code_router
 from atlas_automation_api import build_automation_router
+from atlas_automation_executions_api import build_automation_executions_router
 
 api = atlas.api
 
@@ -39,6 +40,14 @@ api.include_router(
 # edits and executions remain behind Atlas jobs + n8n write policy/confirmation.
 api.include_router(
     build_automation_router(
+        verify_request=atlas.verify_app_request,
+    )
+)
+
+# Read-only execution receipts/history for the selected n8n workflow. This
+# exposes only bounded metadata, never execution payloads or credentials.
+api.include_router(
+    build_automation_executions_router(
         verify_request=atlas.verify_app_request,
     )
 )
