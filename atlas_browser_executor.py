@@ -80,6 +80,21 @@ class BrowserExecutor:
         """Re-check the browser's actual location after navigation/redirects."""
         return cls._validate_public_url(str(page.url))
 
+    @classmethod
+    async def _guard_request(cls, route: Any, request: Any) -> None:
+        """Block private HTTP(S) requests before Playwright sends them."""
+        url = str(request.url)
+        scheme = urlparse(url).scheme.lower()
+        if scheme not in {"http", "https"}:
+            await route.continue_()
+            return
+        try:
+            cls._validate_public_url(url)
+        except BrowserExecutorError:
+            await route.abort("blockedbyclient")
+            return
+        await route.continue_()
+
     async def run(
         self,
         *,
@@ -118,6 +133,7 @@ class BrowserExecutor:
                     context_options["storage_state"] = self.session_store.load(session_name)
                     log.append({"type": "session_load", "name": session_name, "at": time.time()})
                 context = await browser.new_context(**context_options)
+                await context.route("**/*", self._guard_request)
                 page = await context.new_page()
                 page.set_default_timeout(self.timeout_ms)
                 await page.goto(start_url, wait_until="domcontentloaded")
