@@ -21,6 +21,13 @@ class AtlasDialogCenterTests(unittest.TestCase):
         self.assertIn("e.key==='Tab'", source)
         self.assertIn("aria-modal", source)
 
+    def test_dialog_has_accessible_name_and_optional_description(self):
+        source = (ROOT / "web" / "dialog-center.js").read_text(encoding="utf-8")
+        self.assertIn("panel.setAttribute('aria-labelledby','atlas-dialog-title')", source)
+        self.assertIn("title.id='atlas-dialog-title'", source)
+        self.assertIn("p.id='atlas-dialog-description'", source)
+        self.assertIn("panel.setAttribute('aria-describedby',p.id)", source)
+
     def test_dialog_styles_keep_mobile_safe_area_support(self):
         css = (ROOT / "web" / "dialog-center.css").read_text(encoding="utf-8")
         self.assertIn('env(safe-area-inset-bottom)', css)
