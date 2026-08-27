@@ -30,16 +30,31 @@ class BrowserSessionStore:
     def __init__(self, root: str | None = None, key: str | None = None) -> None:
         self.root = Path(root or os.environ.get("ATLAS_BROWSER_SESSION_DIR", "/data/atlas-browser-sessions"))
         self.root.mkdir(parents=True, exist_ok=True)
-        if self.root.is_symlink():
-            raise BrowserSessionError("Session directory must not be a symlink")
-        if not self.root.is_dir():
-            raise BrowserSessionError("Session directory is invalid")
-        os.chmod(self.root, 0o700)
+        self._secure_root_permissions(self.root)
         raw_key = key or os.environ.get("ATLAS_BROWSER_SESSION_KEY", "")
         if not raw_key:
             raise BrowserSessionError("ATLAS_BROWSER_SESSION_KEY is required")
         derived = base64.urlsafe_b64encode(hashlib.sha256(raw_key.encode("utf-8")).digest())
         self.cipher = Fernet(derived)
+
+    @staticmethod
+    def _secure_root_permissions(path: Path) -> None:
+        """Validate and chmod the exact directory inode without following symlinks."""
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory = getattr(os, "O_DIRECTORY", 0)
+        if not nofollow or not directory:
+            raise BrowserSessionError("Secure session directory validation is unavailable on this platform")
+        try:
+            fd = os.open(path, os.O_RDONLY | nofollow | directory)
+        except OSError as exc:
+            raise BrowserSessionError("Session directory cannot be opened safely") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode):
+                raise BrowserSessionError("Session directory is invalid")
+            os.fchmod(fd, 0o700)
+        finally:
+            os.close(fd)
 
     @classmethod
     def _safe_name(cls, name: str) -> str:
