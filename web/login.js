@@ -8,6 +8,9 @@ if(!form||!input||!button||!error)return;
 function focusInput(){
   try{input.focus({preventScroll:true})}catch{try{input.focus()}catch{}}
 }
+function openAtlas(){
+  window.location.replace('/app/safe.html?login='+Date.now());
+}
 
 input.addEventListener('pointerdown',()=>setTimeout(focusInput,0),{passive:true});
 input.addEventListener('touchend',()=>setTimeout(focusInput,0),{passive:true});
@@ -47,7 +50,7 @@ form.addEventListener('submit',async e=>{
       error.textContent='Вход принят, но браузер не сохранил сессию. Откройте эту страницу в Safari.';
       return;
     }
-    window.location.assign('/?atlas_login='+Date.now());
+    openAtlas();
   }catch{
     error.textContent='Нет соединения с Atlas';
   }finally{
@@ -57,6 +60,6 @@ form.addEventListener('submit',async e=>{
 });
 
 window.addEventListener('pageshow',()=>{
-  void verifySession().then(ok=>{if(ok)window.location.assign('/?atlas_login='+Date.now())});
+  void verifySession().then(ok=>{if(ok)openAtlas()});
 });
 })();
