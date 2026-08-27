@@ -17,18 +17,19 @@ class PwaRuntimeRefreshTests(unittest.TestCase):
         self.assertNotIn("body.allow_writes = true", source)
         self.assertNotIn("body.allow_writes=true", source)
 
-    def test_runtime_registers_root_worker_and_cleans_legacy_app_scope(self):
+    def test_runtime_cleans_atlas_workers_without_reload_loop(self):
         source = (ROOT / "web" / "runtime-refresh.js").read_text(encoding="utf-8")
-        self.assertIn("scope:'/'", source)
-        self.assertIn("updateViaCache:'none'", source)
+        app_source = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         self.assertIn("getRegistrations", source)
-        self.assertIn("scopePath==='/app/'", source)
         self.assertIn("reg.unregister()", source)
-        self.assertIn("controllerchange", source)
+        self.assertIn("/app/sw.js", source)
         self.assertIn("/health?atlas_refresh=", source)
         self.assertIn("cache:'no-store'", source)
+        self.assertNotIn("serviceWorker.register", source)
+        self.assertNotIn("controllerchange", source)
+        self.assertNotIn("serviceWorker.register", app_source)
 
-    def test_server_prevents_stale_shell_and_allows_root_worker_scope(self):
+    def test_server_prevents_stale_shell_and_allows_worker_cleanup_compatibility(self):
         source = (ROOT / "atlas_app.py").read_text(encoding="utf-8")
         self.assertIn('"/app/sw.js"', source)
         self.assertIn('response.headers["Service-Worker-Allowed"] = "/"', source)
