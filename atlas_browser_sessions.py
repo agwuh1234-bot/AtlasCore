@@ -59,7 +59,7 @@ class BrowserSessionStore:
             os.close(fd)
 
     def _fsync_root_directory(self) -> None:
-        """Persist directory metadata for the completed atomic rename."""
+        """Persist directory metadata for completed atomic filesystem changes."""
         nofollow = getattr(os, "O_NOFOLLOW", 0)
         directory = getattr(os, "O_DIRECTORY", 0)
         if not nofollow or not directory:
@@ -207,6 +207,9 @@ class BrowserSessionStore:
         if not path.exists():
             return False
         path.unlink()
+        # The encrypted state contains reusable authentication material. Persist the
+        # directory-entry removal so a host crash cannot resurrect a deleted session.
+        self._fsync_root_directory()
         return True
 
     def list_names(self) -> list[str]:
