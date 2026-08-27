@@ -22,6 +22,14 @@ class BrowserSessionStoreTests(unittest.TestCase):
             self.assertTrue(store.delete("shopify"))
             self.assertFalse(store.exists("shopify"))
 
+    def test_delete_uses_nofollow_existence_check(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = BrowserSessionStore(root=root, key="test-key")
+            store.save("shopify", {"cookies": [], "origins": []})
+            with mock.patch.object(Path, "exists", side_effect=AssertionError("Path.exists must not be used")):
+                self.assertTrue(store.delete("shopify"))
+            self.assertFalse(store.exists("shopify"))
+
     def test_root_permissions_are_restricted(self):
         with tempfile.TemporaryDirectory() as parent:
             root = Path(parent) / "sessions"
