@@ -91,8 +91,25 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
             if "parameters" in node and not isinstance(node.get("parameters"), dict):
                 issues.append(f"malformed_workflow_node_parameters:{name}")
 
-            if "credentials" in node and not isinstance(node.get("credentials"), dict):
-                issues.append(f"malformed_workflow_node_credentials:{name}")
+            if "credentials" in node:
+                credentials = node.get("credentials")
+                if not isinstance(credentials, dict):
+                    issues.append(f"malformed_workflow_node_credentials:{name}")
+                else:
+                    for credential_type, credential_ref in credentials.items():
+                        if not isinstance(credential_type, str) or not credential_type.strip():
+                            issues.append(f"malformed_workflow_node_credential_type:{name}")
+                            continue
+                        if not isinstance(credential_ref, dict):
+                            issues.append(f"malformed_workflow_node_credential_ref:{name}:{credential_type}")
+                            continue
+                        for field in ("id", "name"):
+                            if field in credential_ref:
+                                value = credential_ref.get(field)
+                                if not isinstance(value, str) or not value.strip():
+                                    issues.append(
+                                        f"malformed_workflow_node_credential_{field}:{name}:{credential_type}"
+                                    )
 
         known_nodes = set(node_name_counts)
         for name, count in node_name_counts.items():
