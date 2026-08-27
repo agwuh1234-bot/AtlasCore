@@ -28,6 +28,22 @@ class BrowserExecutorSafetyTests(unittest.TestCase):
             "https://example.com",
         )
 
+    @patch("atlas_browser_executor.socket.getaddrinfo")
+    def test_revalidates_actual_page_location_after_redirect(self, getaddrinfo):
+        getaddrinfo.return_value = [(2, 1, 6, "", ("127.0.0.1", 80))]
+        page = type("Page", (), {"url": "http://127.0.0.1/admin"})()
+        with self.assertRaises(BrowserExecutorError):
+            BrowserExecutor._validate_page_location(page)
+
+    @patch("atlas_browser_executor.socket.getaddrinfo")
+    def test_accepts_actual_public_page_location(self, getaddrinfo):
+        getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        page = type("Page", (), {"url": "https://example.com/after-click"})()
+        self.assertEqual(
+            BrowserExecutor._validate_page_location(page),
+            "https://example.com/after-click",
+        )
+
     def test_action_vocabulary_is_narrow(self):
         self.assertNotIn("eval", BrowserExecutor.ALLOWED_ACTIONS)
         self.assertNotIn("javascript", BrowserExecutor.ALLOWED_ACTIONS)
