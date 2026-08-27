@@ -5,6 +5,7 @@ import os
 from atlas_entry import atlas
 from atlas_executor_api import build_executor_router
 from atlas_n8n_executor import build_n8n_executor_router
+from atlas_code_api import build_code_router
 
 api = atlas.api
 
@@ -20,5 +21,15 @@ api.include_router(
     build_n8n_executor_router(
         bridge_key=atlas.ATLAS_BRIDGE_KEY,
         chatgpt_bridge_key=os.environ.get("CHATGPT_N8N_BRIDGE_KEY"),
+    )
+)
+
+# Read-only repository browser used by the visual Code Studio. Mutations still
+# go through Atlas jobs + Developer Mode so existing safety policy stays intact.
+api.include_router(
+    build_code_router(
+        verify_request=atlas.verify_app_request,
+        repo=atlas.REPO,
+        branch=atlas.GITHUB_BRANCH,
     )
 )
