@@ -30,6 +30,28 @@ class N8NGraphSafetyTests(unittest.TestCase):
     def test_shape_validator_accepts_canonical_main_edge(self):
         self.assertEqual(connection_shape_issues(body_with_edges(("A", "B"))), [])
 
+    def test_shape_validator_accepts_finite_two_axis_node_position(self):
+        body = body_with_edges(("A", "B"))
+        body["nodes"] = [
+            {"name": "A", "type": "n8n-nodes-base.manualTrigger", "position": [-100, 20.5]},
+            {"name": "B", "type": "n8n-nodes-base.noOp", "position": [0, 0]},
+        ]
+        self.assertEqual(connection_shape_issues(body), [])
+
+    def test_shape_validator_blocks_malformed_node_positions(self):
+        invalid_positions = ([1], [1, 2, 3], [True, 2], [float("inf"), 0], "1,2")
+        for position in invalid_positions:
+            with self.subTest(position=position):
+                body = body_with_edges(("A", "B"))
+                body["nodes"] = [
+                    {"name": "A", "type": "n8n-nodes-base.manualTrigger", "position": position},
+                    {"name": "B", "type": "n8n-nodes-base.noOp"},
+                ]
+                self.assertEqual(
+                    connection_shape_issues(body),
+                    ["malformed_workflow_node_position:A"],
+                )
+
     def test_shape_validator_blocks_duplicate_physical_edge_anywhere(self):
         body = body_with_edges(("A", "B"), ("A", "B"), ("X", "Y"), ("X", "Y"))
         self.assertEqual(
