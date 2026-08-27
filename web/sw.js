@@ -1,6 +1,24 @@
 const CACHE_NAME = 'atlas-app-v21-20260827';
 const LEGACY_CACHE_PREFIX = 'atlas-app-';
-const SHELL = ['/', '/app/', '/app/manifest.json', '/app/icon.svg'];
+const SHELL = [
+  '/',
+  '/app/',
+  '/app/manifest.json',
+  '/app/icon.svg',
+  '/app/projects.css',
+  '/app/shell.css',
+  '/app/projects.js',
+  '/app/files.js',
+  '/app/recovery.js',
+  '/app/control_center.js',
+  '/app/push.js',
+  '/app/app.js',
+  '/app/ux.js',
+  '/app/status.js',
+  '/app/format.js',
+  '/app/shell.js',
+  '/app/runtime-refresh.js',
+];
 
 function isApiPath(pathname) {
   return pathname === '/health'
