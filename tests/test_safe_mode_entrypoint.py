@@ -10,8 +10,8 @@ SAFE_JS = (WEB / "safe.js").read_text(encoding="utf-8")
 
 
 class SafeModeEntrypointTests(unittest.TestCase):
-    def test_authenticated_login_routes_to_safe_mode(self):
-        self.assertIn("window.location.replace('/app/safe.html?login='", LOGIN_JS)
+    def test_authenticated_login_routes_to_stable_full_atlas(self):
+        self.assertIn("window.location.replace('/?stable=2&login='", LOGIN_JS)
 
     def test_safe_mode_assets_are_wired(self):
         self.assertTrue((WEB / "safe.css").is_file())
