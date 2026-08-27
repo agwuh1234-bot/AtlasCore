@@ -153,7 +153,15 @@ class BrowserSessionStore:
         return self._safe_regular_file_exists(self._path(name))
 
     def save(self, name: str, state: dict[str, Any]) -> None:
-        payload = json.dumps(state, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        try:
+            payload = json.dumps(
+                state,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise BrowserSessionError("Session state is not valid JSON") from exc
         if len(payload) > self._MAX_PLAINTEXT_BYTES:
             raise BrowserSessionError("Session state is too large")
         path = self._path(name)
