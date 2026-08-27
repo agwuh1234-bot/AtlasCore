@@ -70,10 +70,6 @@ class BrowserSessionStore:
             raise BrowserSessionError("Session path must not be hardlinked")
 
     @staticmethod
-    def _restrict_file_permissions(path: Path) -> None:
-        os.chmod(path, 0o600)
-
-    @staticmethod
     def _open_session_for_read(path: Path) -> int:
         """Open a session without following a last-moment symlink swap.
 
@@ -125,9 +121,11 @@ class BrowserSessionStore:
                 handle.write(encrypted)
                 handle.flush()
                 os.fsync(handle.fileno())
+            # The temporary inode is already mode 0600 before it becomes reachable at
+            # the final name. Avoid chmod(path) after replace: a path-based chmod here
+            # would reopen a symlink-swap race after the atomic replacement.
             os.replace(tmp_path, path)
             tmp_path = None
-            self._restrict_file_permissions(path)
         finally:
             if fd >= 0:
                 os.close(fd)
