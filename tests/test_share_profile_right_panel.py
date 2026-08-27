@@ -8,7 +8,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class ShareProfileRightPanelTests(unittest.TestCase):
     def test_share_center_uses_real_project_sources_and_safe_deep_link(self):
         source = (ROOT / 'web' / 'share-center.js').read_text(encoding='utf-8')
+        self.assertIn("new URL(location.pathname,location.origin)", source)
         self.assertIn("searchParams.set('project',projectId())", source)
+        self.assertNotIn("new URL(location.href)", source)
         self.assertIn("/history", source)
         self.assertIn("/app-files?project_id=", source)
         self.assertIn("/app-schedules?project_id=", source)
