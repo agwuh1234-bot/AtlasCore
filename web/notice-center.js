@@ -1,0 +1,9 @@
+(()=>{'use strict';
+let host=null,seq=0;
+function ensure(){if(host&&document.contains(host))return host;host=document.createElement('div');host.id='atlasNoticeHost';host.className='atlas-notice-host';host.setAttribute('aria-live','polite');host.setAttribute('aria-relevant','additions');document.body.append(host);return host}
+function show(message,options={}){const text=String(message||'').trim();if(!text)return null;const h=ensure(),type=['success','error','warn','info'].includes(options.type)?options.type:'info',item=document.createElement('section');item.className='atlas-notice '+type;item.dataset.noticeId=String(++seq);item.setAttribute('role',type==='error'?'alert':'status');item.innerHTML='<span class="atlas-notice-mark" aria-hidden="true"></span><span class="atlas-notice-copy"><strong></strong><small></small></span><button type="button" class="atlas-notice-close" aria-label="Закрыть">×</button>';const title=options.title||({success:'Готово',error:'Ошибка',warn:'Проверьте',info:'Atlas'})[type];item.querySelector('strong').textContent=title;item.querySelector('small').textContent=text;item.querySelector('.atlas-notice-mark').textContent=type==='success'?'✓':type==='error'?'!':type==='warn'?'!':'A';const remove=()=>{item.classList.add('leaving');setTimeout(()=>item.remove(),180)};item.querySelector('.atlas-notice-close').onclick=remove;h.append(item);requestAnimationFrame(()=>item.classList.add('show'));const timeout=Math.max(1800,Math.min(12000,Number(options.duration)|| (type==='error'?6000:3500)));if(options.sticky!==true)setTimeout(remove,timeout);return{close:remove,element:item}}
+function success(message,options={}){return show(message,{...options,type:'success'})}
+function error(message,options={}){return show(message,{...options,type:'error'})}
+function warn(message,options={}){return show(message,{...options,type:'warn'})}
+window.AtlasNotice={show,success,error,warn};
+})();
