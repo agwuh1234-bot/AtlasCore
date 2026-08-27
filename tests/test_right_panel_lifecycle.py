@@ -26,7 +26,7 @@ class RightPanelLifecycleTests(unittest.TestCase):
     def test_tablet_drawer_traps_focus_and_restores_previous_focus(self):
         source = (ROOT / "web" / "right-panel-control.js").read_text(encoding="utf-8")
         self.assertIn("function trap(e)", source)
-        self.assertIn("e.key==='Tab'", source)
+        self.assertIn("e.key!=='Tab'", source)
         self.assertIn("e.key==='Escape'", source)
         self.assertIn("previousFocus=document.activeElement", source)
         self.assertIn("f?.focus?.({preventScroll:true})", source)
