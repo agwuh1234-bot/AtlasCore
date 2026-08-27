@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -64,6 +65,15 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
             node_type = node.get("type")
             if not isinstance(node_type, str) or not node_type:
                 issues.append(f"malformed_workflow_node_type:{name}")
+
+            type_version = node.get("typeVersion")
+            if (
+                isinstance(type_version, bool)
+                or not isinstance(type_version, (int, float))
+                or not math.isfinite(float(type_version))
+                or type_version <= 0
+            ):
+                issues.append(f"malformed_workflow_node_type_version:{name}")
 
             if "disabled" in node and not isinstance(node.get("disabled"), bool):
                 issues.append(f"malformed_workflow_node_disabled:{name}")
