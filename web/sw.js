@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atlas-app-v21-20260827';
+const CACHE_NAME = 'atlas-app-v22-20260827';
 const LEGACY_CACHE_PREFIX = 'atlas-app-';
 const SHELL = [
   '/',
@@ -28,6 +28,12 @@ function isApiPath(pathname) {
     || pathname.startsWith('/integrations/')
     || pathname === '/mcp'
     || pathname.startsWith('/mcp/');
+}
+
+function isAuthEntrypoint(pathname) {
+  return pathname === '/login'
+    || pathname === '/app/login.js'
+    || pathname === '/app/login.css';
 }
 
 async function fetchFresh(request) {
@@ -79,8 +85,8 @@ self.addEventListener('fetch', (event) => {
 
   // Never cache or rewrite authenticated/API traffic. In particular, the
   // service worker must not change allow_writes on Atlas jobs.
-  if (event.request.method !== 'GET' || isApiPath(url.pathname)) {
-    if (event.request.method === 'GET' && isApiPath(url.pathname)) {
+  if (event.request.method !== 'GET' || isApiPath(url.pathname) || isAuthEntrypoint(url.pathname)) {
+    if (event.request.method === 'GET' && (isApiPath(url.pathname) || isAuthEntrypoint(url.pathname))) {
       event.respondWith(fetchFresh(event.request));
     }
     return;
