@@ -39,6 +39,16 @@ class SafariStableBootTests(unittest.TestCase):
         self.assertNotIn('serviceWorker.register', runtime)
         self.assertNotIn('serviceWorker.register', app)
 
+    def test_worker_cleanup_is_manual_only_during_normal_boot(self):
+        runtime = (ROOT / 'web' / 'runtime-refresh.js').read_text(encoding='utf-8')
+        start = runtime.index('function boot()')
+        end = runtime.index("document.readyState==='loading'", start)
+        boot = runtime[start:end]
+        self.assertNotIn('removeAtlasWorkers()', boot)
+        self.assertNotIn('cleanupStarted', boot)
+        self.assertNotIn('2200', boot)
+        self.assertIn('removeAtlasWorkers', runtime)
+
     def test_background_resume_does_not_repeat_worker_cleanup_or_leak_guards(self):
         runtime = (ROOT / 'web' / 'runtime-refresh.js').read_text(encoding='utf-8')
         self.assertIn("window.addEventListener('pagehide'", runtime)
