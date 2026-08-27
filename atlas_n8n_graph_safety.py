@@ -34,10 +34,23 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
     surfaced instead of being silently normalized or guessed at. Exact duplicate
     physical edges are also rejected globally because one-shot repair operations
     cannot safely infer which duplicate instance should be retained or removed.
+
+    When a workflow node list is available, connection endpoints must also refer
+    to real named nodes. This prevents stale or partially-deleted graph references
+    from being treated as a valid topology during repair or execution preflight.
     """
     connections = body.get("connections")
     if not isinstance(connections, dict):
         return ["malformed_connections"]
+
+    known_nodes: set[str] | None = None
+    raw_nodes = body.get("nodes")
+    if isinstance(raw_nodes, list):
+        known_nodes = {
+            node.get("name")
+            for node in raw_nodes
+            if isinstance(node, dict) and isinstance(node.get("name"), str) and node.get("name")
+        }
 
     issues: list[str] = []
     seen_edges: set[tuple[str, str, str, int, int]] = set()
@@ -45,6 +58,8 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
         if not isinstance(source, str) or not source:
             issues.append("malformed_connection_source")
             continue
+        if known_nodes is not None and source not in known_nodes:
+            issues.append(f"dangling_connection_source:{source}")
         if not isinstance(outputs, dict):
             issues.append(f"malformed_connection_map:{source}")
             continue
@@ -80,6 +95,8 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
                     target = edge.get("node")
                     if not isinstance(target, str) or not target:
                         issues.append(f"malformed_connection_target:{source}")
+                    elif known_nodes is not None and target not in known_nodes:
+                        issues.append(f"dangling_connection_target:{source}->{target}")
 
                     edge_type = edge.get("type")
                     if not isinstance(edge_type, str) or not edge_type:
