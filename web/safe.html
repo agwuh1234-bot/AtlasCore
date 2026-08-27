@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070a">
+<title>Atlas Safe Mode</title>
+<link rel="stylesheet" href="/app/safe.css?v=20260827-1700">
+</head>
+<body>
+<header class="top"><div><div class="brand">Atlas</div><div class="status"><span id="dot" class="dot"></span><span id="status">offline</span> · Safe Mode</div></div><div class="actions"><button id="newChat" class="btn" type="button">Новый чат</button><button id="fullAtlas" class="btn full" type="button">Полный Atlas</button></div></header>
+<main class="main"><div class="wrap"><div class="project"><label for="project">Проект</label><select id="project" aria-label="Проект"></select></div><div id="notice" class="notice" role="alert"></div><div id="chat"></div></div></main>
+<footer class="composer-wrap"><form id="composer" class="composer"><textarea id="message" rows="1" placeholder="Напишите Atlas…" aria-label="Сообщение Atlas"></textarea><button id="send" class="send" type="submit" aria-label="Отправить">→</button></form></footer>
+<script src="/app/safe.js?v=20260827-1700" defer></script>
+</body>
+</html>
