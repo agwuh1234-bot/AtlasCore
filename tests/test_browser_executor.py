@@ -76,6 +76,23 @@ class BrowserRequestGuardTests(unittest.IsolatedAsyncioTestCase):
         route.continue_.assert_not_awaited()
 
     @patch("atlas_browser_executor.socket.getaddrinfo")
+    async def test_embedded_credentials_subrequest_is_aborted_before_dns(self, getaddrinfo):
+        route = type("Route", (), {})()
+        route.abort = AsyncMock()
+        route.continue_ = AsyncMock()
+        request = type(
+            "Request",
+            (),
+            {"url": "https://user:password@example.com/private.js"},
+        )()
+
+        await BrowserExecutor._guard_request(route, request)
+
+        getaddrinfo.assert_not_called()
+        route.abort.assert_awaited_once_with("blockedbyclient")
+        route.continue_.assert_not_awaited()
+
+    @patch("atlas_browser_executor.socket.getaddrinfo")
     async def test_public_http_request_is_allowed(self, getaddrinfo):
         getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
         route = type("Route", (), {})()
