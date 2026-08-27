@@ -23,6 +23,14 @@ class UIActionsAccessibilityTests(unittest.TestCase):
         self.assertIn("document.contains(f)", self.source)
         self.assertIn("f.focus()", self.source)
 
+    def test_quick_menu_traps_tab_focus_inside_dialog(self):
+        self.assertIn("e.key==='Tab'", self.source)
+        self.assertIn("const first=focusable[0],last=focusable[focusable.length-1]", self.source)
+        self.assertIn("e.shiftKey&&document.activeElement===first", self.source)
+        self.assertIn("!e.shiftKey&&document.activeElement===last", self.source)
+        self.assertIn("last.focus()", self.source)
+        self.assertIn("first.focus()", self.source)
+
 
 if __name__ == "__main__":
     unittest.main()
