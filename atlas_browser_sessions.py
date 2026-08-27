@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -53,9 +54,20 @@ class BrowserSessionStore:
         return self.root / f"{self._safe_name(name)}.state.enc"
 
     @staticmethod
-    def _reject_symlink(path: Path) -> None:
+    def _reject_unsafe_existing_file(path: Path) -> None:
         if path.is_symlink():
             raise BrowserSessionError("Session path must not be a symlink")
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISREG(info.st_mode):
+            raise BrowserSessionError("Session path must be a regular file")
+        # A hardlink can alias an inode outside the session directory. In particular,
+        # load() repairs permissions with chmod(), which must never affect an external
+        # file. Session files are therefore required to have exactly one link.
+        if info.st_nlink != 1:
+            raise BrowserSessionError("Session path must not be hardlinked")
 
     @staticmethod
     def _restrict_file_permissions(path: Path) -> None:
@@ -63,13 +75,13 @@ class BrowserSessionStore:
 
     def exists(self, name: str) -> bool:
         path = self._path(name)
-        self._reject_symlink(path)
+        self._reject_unsafe_existing_file(path)
         return path.is_file()
 
     def save(self, name: str, state: dict[str, Any]) -> None:
         payload = json.dumps(state, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         path = self._path(name)
-        self._reject_symlink(path)
+        self._reject_unsafe_existing_file(path)
         encrypted = self.cipher.encrypt(payload)
         fd = -1
         tmp_path: Path | None = None
@@ -96,7 +108,7 @@ class BrowserSessionStore:
 
     def load(self, name: str) -> dict[str, Any]:
         path = self._path(name)
-        self._reject_symlink(path)
+        self._reject_unsafe_existing_file(path)
         if not path.is_file():
             raise BrowserSessionError("Session not found")
         self._restrict_file_permissions(path)
@@ -111,7 +123,7 @@ class BrowserSessionStore:
 
     def delete(self, name: str) -> bool:
         path = self._path(name)
-        self._reject_symlink(path)
+        self._reject_unsafe_existing_file(path)
         if not path.exists():
             return False
         path.unlink()
@@ -120,7 +132,11 @@ class BrowserSessionStore:
     def list_names(self) -> list[str]:
         names: list[str] = []
         for path in self.root.glob("*.state.enc"):
-            if path.is_symlink() or not path.is_file():
+            try:
+                self._reject_unsafe_existing_file(path)
+            except BrowserSessionError:
+                continue
+            if not path.is_file():
                 continue
             names.append(path.name.removesuffix(".state.enc"))
         return sorted(names)
