@@ -25,6 +25,17 @@ class CommandCenterControlsTests(unittest.TestCase):
         self.assertIn("metaKey", source)
         self.assertIn("ctrlKey", source)
 
+    def test_project_search_restores_full_thread_continuation_context(self):
+        source = (ROOT / "web" / "project-search.js").read_text(encoding="utf-8")
+        self.assertIn("function restoreThreadContext(item)", source)
+        self.assertIn("atlas_active_thread_id", source)
+        self.assertIn("atlas_response_id", source)
+        self.assertIn("atlas_active_job_id", source)
+        self.assertIn("JSON.stringify(normMessages(thread))", source)
+        self.assertIn("thread.response_id", source)
+        self.assertIn("thread.active_job_id", source)
+        self.assertIn("window.AtlasProjectSearch={open,close,restoreThreadContext}", source)
+
     def test_pro_panel_uses_live_project_and_budget_data(self):
         source = (ROOT / "web" / "workspace-control.js").read_text(encoding="utf-8")
         self.assertIn("/app-budget", source)
