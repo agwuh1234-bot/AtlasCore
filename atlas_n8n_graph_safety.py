@@ -35,7 +35,9 @@ def connection_shape_issues(body: dict[str, Any]) -> list[str]:
     issues: list[str] = []
     known_nodes: set[str] | None = None
     raw_nodes = body.get("nodes")
-    if isinstance(raw_nodes, list):
+    if not isinstance(raw_nodes, list):
+        issues.append("malformed_nodes")
+    else:
         node_name_counts: dict[str, int] = {}
         for node_index, node in enumerate(raw_nodes):
             if not isinstance(node, dict):
