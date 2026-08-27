@@ -30,6 +30,16 @@ class AppEntrypointAvailabilityTests(unittest.TestCase):
         self.assertIn("pathname === '/health'", SERVICE_WORKER)
         self.assertIn("fetchFresh(event.request)", SERVICE_WORKER)
 
+    def test_service_worker_keeps_login_entrypoint_network_fresh(self):
+        for path in (
+            "pathname === '/login'",
+            "pathname === '/app/login.js'",
+            "pathname === '/app/login.css'",
+        ):
+            self.assertIn(path, SERVICE_WORKER)
+        self.assertIn("isAuthEntrypoint(url.pathname)", SERVICE_WORKER)
+        self.assertIn("event.respondWith(fetchFresh(event.request))", SERVICE_WORKER)
+
 
 if __name__ == "__main__":
     unittest.main()
