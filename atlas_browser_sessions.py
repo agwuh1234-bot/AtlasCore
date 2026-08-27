@@ -73,6 +73,37 @@ class BrowserSessionStore:
     def _restrict_file_permissions(path: Path) -> None:
         os.chmod(path, 0o600)
 
+    @staticmethod
+    def _open_session_for_read(path: Path) -> int:
+        """Open a session without following a last-moment symlink swap.
+
+        The lstat checks used elsewhere are useful for validation, but load() handles
+        authentication material and must avoid a check-then-open race. O_NOFOLLOW
+        binds the validation to the file descriptor actually read; fstat then repeats
+        the regular-file/hardlink checks on that exact inode.
+        """
+        flags = os.O_RDONLY
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        if not nofollow:
+            raise BrowserSessionError("Secure session loading is unavailable on this platform")
+        try:
+            fd = os.open(path, flags | nofollow)
+        except FileNotFoundError as exc:
+            raise BrowserSessionError("Session not found") from exc
+        except OSError as exc:
+            raise BrowserSessionError("Session path cannot be opened safely") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise BrowserSessionError("Session path must be a regular file")
+            if info.st_nlink != 1:
+                raise BrowserSessionError("Session path must not be hardlinked")
+            os.fchmod(fd, 0o600)
+            return fd
+        except Exception:
+            os.close(fd)
+            raise
+
     def exists(self, name: str) -> bool:
         path = self._path(name)
         self._reject_unsafe_existing_file(path)
@@ -108,15 +139,18 @@ class BrowserSessionStore:
 
     def load(self, name: str) -> dict[str, Any]:
         path = self._path(name)
-        self._reject_unsafe_existing_file(path)
-        if not path.is_file():
-            raise BrowserSessionError("Session not found")
-        self._restrict_file_permissions(path)
+        fd = self._open_session_for_read(path)
         try:
-            raw = self.cipher.decrypt(path.read_bytes())
+            with os.fdopen(fd, "rb", closefd=True) as handle:
+                fd = -1
+                encrypted = handle.read()
+            raw = self.cipher.decrypt(encrypted)
             value = json.loads(raw.decode("utf-8"))
         except (InvalidToken, ValueError, json.JSONDecodeError) as exc:
             raise BrowserSessionError("Session state is invalid or cannot be decrypted") from exc
+        finally:
+            if fd >= 0:
+                os.close(fd)
         if not isinstance(value, dict):
             raise BrowserSessionError("Session state has invalid format")
         return value
