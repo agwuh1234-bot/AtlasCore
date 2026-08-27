@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from atlas_browser_executor import BrowserExecutor, BrowserExecutorError
 
@@ -59,6 +59,47 @@ class BrowserExecutorSafetyTests(unittest.TestCase):
         self.assertNotIn("eval", BrowserExecutor.ALLOWED_ACTIONS)
         self.assertNotIn("javascript", BrowserExecutor.ALLOWED_ACTIONS)
         self.assertIn("click", BrowserExecutor.ALLOWED_ACTIONS)
+
+
+class BrowserRequestGuardTests(unittest.IsolatedAsyncioTestCase):
+    @patch("atlas_browser_executor.socket.getaddrinfo")
+    async def test_private_http_request_is_aborted_before_network(self, getaddrinfo):
+        getaddrinfo.return_value = [(2, 1, 6, "", ("127.0.0.1", 80))]
+        route = type("Route", (), {})()
+        route.abort = AsyncMock()
+        route.continue_ = AsyncMock()
+        request = type("Request", (), {"url": "http://127.0.0.1/admin"})()
+
+        await BrowserExecutor._guard_request(route, request)
+
+        route.abort.assert_awaited_once_with("blockedbyclient")
+        route.continue_.assert_not_awaited()
+
+    @patch("atlas_browser_executor.socket.getaddrinfo")
+    async def test_public_http_request_is_allowed(self, getaddrinfo):
+        getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        route = type("Route", (), {})()
+        route.abort = AsyncMock()
+        route.continue_ = AsyncMock()
+        request = type("Request", (), {"url": "https://example.com/app.js"})()
+
+        await BrowserExecutor._guard_request(route, request)
+
+        route.continue_.assert_awaited_once_with()
+        route.abort.assert_not_awaited()
+
+    async def test_non_http_subresource_does_not_trigger_dns(self):
+        route = type("Route", (), {})()
+        route.abort = AsyncMock()
+        route.continue_ = AsyncMock()
+        request = type("Request", (), {"url": "data:image/png;base64,AAAA"})()
+
+        with patch("atlas_browser_executor.socket.getaddrinfo") as getaddrinfo:
+            await BrowserExecutor._guard_request(route, request)
+
+        getaddrinfo.assert_not_called()
+        route.continue_.assert_awaited_once_with()
+        route.abort.assert_not_awaited()
 
 
 if __name__ == "__main__":
