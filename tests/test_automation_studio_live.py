@@ -30,6 +30,15 @@ class AutomationStudioLiveTests(unittest.TestCase):
         self.assertNotIn('@router.put(', source)
         self.assertNotIn('@router.delete(', source)
 
+    def test_all_duplicate_action_buttons_are_wired(self):
+        source = (ROOT / "web" / "automation-studio-live.js").read_text(encoding="utf-8")
+        self.assertIn('$$(`[data-act="${a}"]`,panel).forEach', source)
+        self.assertIn("$$('[data-act=\"edit\"]',panel).forEach", source)
+        self.assertIn("$$('[data-act=\"run\"]',panel).forEach", source)
+        self.assertIn('function workflowReady()', source)
+        self.assertIn('function fitGraph()', source)
+        self.assertIn("$('.auto-change-input',panel)?.focus()", source)
+
     def test_node_rows_do_not_expose_credential_values(self):
         body = {
             "nodes": [
